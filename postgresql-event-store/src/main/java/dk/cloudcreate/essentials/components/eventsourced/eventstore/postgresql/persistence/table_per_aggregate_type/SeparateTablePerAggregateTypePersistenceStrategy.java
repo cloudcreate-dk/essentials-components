@@ -49,11 +49,11 @@ public class SeparateTablePerAggregateTypePersistenceStrategy implements Aggrega
      * Value: The Query SQL for the event stream table the aggregate's events are persisted to
      */
     private final ConcurrentMap<AggregateType, String>                                     lastPersistedEventForAggregateSql = new ConcurrentHashMap<>();
-    private final ConcurrentMap<AggregateType, SeparateTablePerAggregateTypeConfiguration> eventStreamConfigurations         = new ConcurrentHashMap<>();
+    private final ConcurrentMap<AggregateType, SeparateTablePerAggregateTypeConfiguration> aggregateTypeConfigurations       = new ConcurrentHashMap<>();
     private final UnitOfWorkFactory                                                        unitOfWorkFactory;
-    private final PersistableEventMapper                                                          eventMapper;
-    private final Optional<PostgresqlEventStreamListener>                                         postgresEventStreamListener;
-    private final Jdbi                                                                            jdbi;
+    private final PersistableEventMapper                                                   eventMapper;
+    private final Optional<PostgresqlEventStreamListener>                                  postgresEventStreamListener;
+    private final Jdbi                                                                     jdbi;
 
     /**
      * Create a new {@link SeparateTablePerAggregateTypePersistenceStrategy} using the specified {@link PersistableEventMapper}
@@ -64,11 +64,11 @@ public class SeparateTablePerAggregateTypePersistenceStrategy implements Aggrega
     public SeparateTablePerAggregateTypePersistenceStrategy(Jdbi jdbi,
                                                             UnitOfWorkFactory unitOfWorkFactory,
                                                             PersistableEventMapper eventMapper,
-                                                            List<SeparateTablePerAggregateTypeConfiguration> eventStreamConfigurations) {
+                                                            List<SeparateTablePerAggregateTypeConfiguration> aggregateTypeConfigurations) {
         this(jdbi,
              unitOfWorkFactory,
              eventMapper,
-             eventStreamConfigurations,
+             aggregateTypeConfigurations,
              null);
     }
 
@@ -81,11 +81,11 @@ public class SeparateTablePerAggregateTypePersistenceStrategy implements Aggrega
     public SeparateTablePerAggregateTypePersistenceStrategy(Jdbi jdbi,
                                                             UnitOfWorkFactory unitOfWorkFactory,
                                                             PersistableEventMapper eventMapper,
-                                                            SeparateTablePerAggregateTypeConfiguration... eventStreamConfigurations) {
+                                                            SeparateTablePerAggregateTypeConfiguration... aggregateTypeConfigurations) {
         this(jdbi,
              unitOfWorkFactory,
              eventMapper,
-             List.of(eventStreamConfigurations),
+             List.of(aggregateTypeConfigurations),
              null);
     }
 
@@ -98,7 +98,7 @@ public class SeparateTablePerAggregateTypePersistenceStrategy implements Aggrega
     private SeparateTablePerAggregateTypePersistenceStrategy(Jdbi jdbi,
                                                              UnitOfWorkFactory unitOfWorkFactory,
                                                              PersistableEventMapper eventMapper,
-                                                             List<SeparateTablePerAggregateTypeConfiguration> eventStreamConfigurations,
+                                                             List<SeparateTablePerAggregateTypeConfiguration> aggregateTypeConfigurations,
                                                              PostgresqlEventStreamListener postgresqlEventStreamListener) {
         this.jdbi = requireNonNull(jdbi, "No jdbi instance provided");
         this.unitOfWorkFactory = requireNonNull(unitOfWorkFactory);
@@ -111,15 +111,15 @@ public class SeparateTablePerAggregateTypePersistenceStrategy implements Aggrega
         jdbi.registerArgument(new GlobalEventOrderArgumentFactory());
         jdbi.registerArgument(new EventRevisionArgumentFactory());
 
-        requireNonNull(eventStreamConfigurations, "No eventStreamConfigurations provided");
-        eventStreamConfigurations.forEach(this::addAggregateTypeConfiguration);
+        requireNonNull(aggregateTypeConfigurations, "No eventStreamConfigurations provided");
+        aggregateTypeConfigurations.forEach(this::addAggregateTypeConfiguration);
     }
 
     @Override
     public SeparateTablePerAggregateTypePersistenceStrategy addAggregateTypeConfiguration(SeparateTablePerAggregateTypeConfiguration eventStreamConfiguration) {
         requireNonNull(eventStreamConfiguration, "No eventStreamConfiguration provided");
-        if (!eventStreamConfigurations.containsKey(eventStreamConfiguration.aggregateType)) {
-            eventStreamConfigurations.put(eventStreamConfiguration.aggregateType, eventStreamConfiguration);
+        if (!aggregateTypeConfigurations.containsKey(eventStreamConfiguration.aggregateType)) {
+            aggregateTypeConfigurations.put(eventStreamConfiguration.aggregateType, eventStreamConfiguration);
             initializeEventStorageFor(unitOfWorkFactory, eventStreamConfiguration);
         }
         return this;
@@ -148,8 +148,9 @@ public class SeparateTablePerAggregateTypePersistenceStrategy implements Aggrega
 
     /**
      * Reset the EventStore for the given configuration
-     * @param unitOfWorkFactory        factory for acquiring a {@link UnitOfWork}
-     * @param configuration the configuration for the given event stream
+     *
+     * @param unitOfWorkFactory factory for acquiring a {@link UnitOfWork}
+     * @param configuration     the configuration for the given event stream
      */
     public void resetEventStorageFor(UnitOfWorkFactory unitOfWorkFactory, SeparateTablePerAggregateTypeConfiguration configuration) {
         requireNonNull(unitOfWorkFactory, "No unitOfWorkFactory provided");
@@ -164,10 +165,10 @@ public class SeparateTablePerAggregateTypePersistenceStrategy implements Aggrega
         initializeEventStorageFor(unitOfWorkFactory, configuration);
     }
 
-    private SeparateTablePerAggregateTypeConfiguration getEventStreamConfiguration(AggregateType aggregateEventStreamName) {
-        var config = eventStreamConfigurations.get(aggregateEventStreamName);
+    private SeparateTablePerAggregateTypeConfiguration getAggregateTypeConfiguration(AggregateType aggregateType) {
+        var config = aggregateTypeConfigurations.get(aggregateType);
         if (config == null) {
-            throw new EventStoreException(msg("EventStream with name '{}' hasn't been configured. Please add it to the persistence strategy's configuration at initialization time or using addEventStreamConfiguration(config)", aggregateEventStreamName));
+            throw new EventStoreException(msg("EventStream with name '{}' hasn't been configured. Please add it to the persistence strategy's configuration at initialization time or using addAggregateTypeConfiguration(config)", aggregateType));
         }
         return config;
     }
@@ -318,7 +319,7 @@ public class SeparateTablePerAggregateTypePersistenceStrategy implements Aggrega
         requireNonNull(appendEventsAfterEventOrder, "No appendEventsAfterEventOrder provided");
         requireNonNull(persistableEvents, "No persistableEvents provided");
 
-        var configuration = getEventStreamConfiguration(aggregateType);
+        var configuration = getAggregateTypeConfiguration(aggregateType);
         if (persistableEvents.isEmpty()) {
             return AggregateEventStream.of(configuration,
                                            aggregateId,
@@ -386,7 +387,7 @@ public class SeparateTablePerAggregateTypePersistenceStrategy implements Aggrega
         requireNonNull(aggregateType, "No aggregateType provided");
         requireNonNull(aggregateId, "No aggregateId provided");
 
-        var configuration = getEventStreamConfiguration(aggregateType);
+        var configuration = getAggregateTypeConfiguration(aggregateType);
         var query = unitOfWork.handle()
                               .createQuery(getLastPersistedEventRelatedToAggregateSQL(configuration));
         var lastPersistedEvent = query.bind("aggregateId", configuration.aggregateIdColumnType == IdentifierColumnType.UUID ? UUID.fromString(configuration.aggregateIdSerializer.serialize(aggregateId)) : configuration.aggregateIdSerializer.serialize(aggregateId))
@@ -399,7 +400,7 @@ public class SeparateTablePerAggregateTypePersistenceStrategy implements Aggrega
     }
 
     private String getLastPersistedEventRelatedToAggregateSQL(SeparateTablePerAggregateTypeConfiguration configuration) {
-        return lastPersistedEventForAggregateSql.computeIfAbsent(configuration.aggregateType, eventStreamName -> {
+        return lastPersistedEventForAggregateSql.computeIfAbsent(configuration.aggregateType, aggregateType -> {
             var sqlTemplate = "SELECT * FROM {:tableName} WHERE \n" +
                     "   {:aggregateIdColumn} = :aggregateId \n" +
                     "   ORDER BY {:eventOrderColumn} DESC LIMIT 1";
@@ -503,7 +504,7 @@ public class SeparateTablePerAggregateTypePersistenceStrategy implements Aggrega
         requireNonNull(eventOrderRange, "No eventOrderRange provided");
         requireNonNull(onlyIncludeEventsIfTheyBelongToTenant, "No onlyIncludeEventsIfTheyBelongToTenant provided");
 
-        var configuration = getEventStreamConfiguration(aggregateType);
+        var configuration = getAggregateTypeConfiguration(aggregateType);
         var query = unitOfWork.handle()
                               .createQuery(loadAggregateEventsQuerySql(configuration, eventOrderRange, onlyIncludeEventsIfTheyBelongToTenant));
         query.bind("aggregateId", configuration.aggregateIdColumnType == IdentifierColumnType.UUID ? UUID.fromString(configuration.aggregateIdSerializer.serialize(aggregateId)) : configuration.aggregateIdSerializer.serialize(aggregateId))
@@ -561,7 +562,7 @@ public class SeparateTablePerAggregateTypePersistenceStrategy implements Aggrega
         requireNonNull(globalOrderRange, "No aggregateId provided");
         requireNonNull(onlyIncludeEventsIfTheyBelongToTenant, "No onlyIncludeEventsIfTheyBelongToTenant provided");
 
-        var configuration = getEventStreamConfiguration(aggregateType);
+        var configuration = getAggregateTypeConfiguration(aggregateType);
         var query = unitOfWork.handle()
                               .createQuery(loadEventsByGlobalOrderQuerySql(configuration, globalOrderRange, onlyIncludeEventsIfTheyBelongToTenant));
 
@@ -583,7 +584,7 @@ public class SeparateTablePerAggregateTypePersistenceStrategy implements Aggrega
         requireNonNull(aggregateType, "No aggregateType provided");
         requireNonNull(eventId, "No eventId provided");
 
-        var configuration = getEventStreamConfiguration(aggregateType);
+        var configuration = getAggregateTypeConfiguration(aggregateType);
         return unitOfWork.handle()
                          .createQuery(loadEventQuerySql(configuration))
                          .bind("eventId", configuration.eventIdColumnType == IdentifierColumnType.UUID ? UUID.fromString(eventId.toString()) : eventId)
@@ -624,7 +625,7 @@ public class SeparateTablePerAggregateTypePersistenceStrategy implements Aggrega
     }
 
     protected String getInsertSql(SeparateTablePerAggregateTypeConfiguration config) {
-        return insertSql.computeIfAbsent(config.aggregateType, eventStreamName ->
+        return insertSql.computeIfAbsent(config.aggregateType, aggregateType ->
                 bind("INSERT INTO {:tableName} (\n" +
                              "        {:aggregateIdColumn},\n" +
                              "        {:eventOrderColumn},\n" +

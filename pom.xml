@@ -59,7 +59,7 @@
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
         <revision>DEV-SNAPSHOT</revision>
-        <essentials.version>DEV-SNAPSHOT</essentials.version>
+        <essentials.version>0.7.0</essentials.version>
         <slf4j.version>1.7.36</slf4j.version>
         <postgresql.version>42.3.5</postgresql.version>
         <objenesis.version>3.2</objenesis.version>

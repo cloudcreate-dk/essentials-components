@@ -50,13 +50,13 @@ public interface PersistedEvent {
     }
 
     static PersistedEvent from(PersistableEvent persistableEvent,
-                               AggregateType aggregateEventStreamName,
+                               AggregateType aggregateType,
                                GlobalEventOrder globalEventOrder,
                                EventJSON serializedEvent,
                                EventMetaDataJSON serializedEventMetaData,
                                OffsetDateTime eventTimestamp) {
         return from(persistableEvent.eventId(),
-                    aggregateEventStreamName,
+                    aggregateType,
                     persistableEvent.aggregateId(),
                     serializedEvent,
                     persistableEvent.eventOrder(),

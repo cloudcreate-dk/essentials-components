@@ -51,8 +51,8 @@ public interface AggregateRootRepository<ID, AGGREGATE_IMPL_TYPE extends Aggrega
         return new DefaultAggregateRootRepository<>(eventStore,
                                                     eventStreamConfiguration,
                                                     aggregateRootInstanceFactory,
-                                                    (Class<ID>)GenericType.resolveGenericType(aggregateImplementationType, 0)
-                                                               .orElseThrow(() -> new IllegalArgumentException(msg("Couldn't resolve AggregateId type from {}'s type parameters", aggregateImplementationType.getName()))),
+                                                    (Class<ID>) GenericType.resolveGenericType(aggregateImplementationType, 0)
+                                                                           .orElseThrow(() -> new IllegalArgumentException(msg("Couldn't resolve AggregateId type from {}'s type parameters", aggregateImplementationType.getName()))),
                                                     aggregateImplementationType);
     }
 
@@ -195,7 +195,7 @@ public interface AggregateRootRepository<ID, AGGREGATE_IMPL_TYPE extends Aggrega
         private static final Logger log = LoggerFactory.getLogger(AggregateRootRepository.class);
 
         private final EventStore<?>              eventStore;
-        private final AggregateTypeConfiguration eventStreamConfiguration;
+        private final AggregateTypeConfiguration aggregateTypeConfiguration;
         private final Class<AGGREGATE_TYPE>      aggregateImplementationType;
         private final Class<ID>                                          aggregateIdType;
         private final AggregateRootRepositoryUnitOfWorkLifecycleCallback unitOfWorkCallback;
@@ -205,23 +205,23 @@ public interface AggregateRootRepository<ID, AGGREGATE_IMPL_TYPE extends Aggrega
          * Create an {@link AggregateRootRepository}<br>
          *
          * @param eventStore                   the {@link EventStore} instance to use
-         * @param eventStreamConfiguration     the configuration for the event stream that will contain all the events related to the aggregate type
+         * @param aggregateTypeConfiguration     the configuration for the event stream that will contain all the events related to the aggregate type
          * @param aggregateRootInstanceFactory the factory responsible for instantiating your {@link AggregateRoot}'s when loading them from the {@link EventStore}
          * @param aggregateIdType              the concrete aggregate ID type
          * @param aggregateImplementationType  the concrete aggregate type (MUST be a subtype of {@link AggregateRoot})
          */
         private <CONFIG extends AggregateTypeConfiguration> DefaultAggregateRootRepository(EventStore<CONFIG> eventStore,
-                                                                                           CONFIG eventStreamConfiguration,
+                                                                                           CONFIG aggregateTypeConfiguration,
                                                                                            AggregateRootInstanceFactory aggregateRootInstanceFactory,
                                                                                            Class<ID> aggregateIdType,
                                                                                            Class<AGGREGATE_TYPE> aggregateImplementationType) {
             this.eventStore = requireNonNull(eventStore, "You must supply an EventStore instance");
-            this.eventStreamConfiguration = requireNonNull(eventStreamConfiguration, "You must supply an eventStreamConfiguration");
+            this.aggregateTypeConfiguration = requireNonNull(aggregateTypeConfiguration, "You must supply an eventStreamConfiguration");
             this.aggregateRootInstanceFactory = requireNonNull(aggregateRootInstanceFactory, "You must supply a AggregateRootFactory instance");
             this.aggregateImplementationType = requireNonNull(aggregateImplementationType, "You must supply an aggregateImplementationType");
             this.aggregateIdType = requireNonNull(aggregateIdType, "You must supply an aggregateIdType");
             unitOfWorkCallback = new AggregateRootRepositoryUnitOfWorkLifecycleCallback();
-            eventStore.addAggregateTypeConfiguration(eventStreamConfiguration);
+            eventStore.addAggregateTypeConfiguration(aggregateTypeConfiguration);
             eventStore.addSpecificInMemoryProjector(aggregateImplementationType, new ClassicAggregateInMemoryProjector(aggregateRootInstanceFactory));
         }
 
@@ -235,8 +235,8 @@ public interface AggregateRootRepository<ID, AGGREGATE_IMPL_TYPE extends Aggrega
         @Override
         public String toString() {
             return "AggregateRootRepository{" +
-                    "eventStreamName=" + eventStreamConfiguration.aggregateType +
-                    "aggregateType=" + aggregateRootImplementationType() +
+                    "aggregateType=" + aggregateTypeConfiguration.aggregateType +
+                    "aggregateImplementationType=" + aggregateRootImplementationType() +
                     "aggregateIdType=" + aggregateIdType() +
                     '}';
         }
@@ -245,7 +245,7 @@ public interface AggregateRootRepository<ID, AGGREGATE_IMPL_TYPE extends Aggrega
         public Optional<AGGREGATE_TYPE> tryLoad(ID aggregateId, Optional<EventOrder> expectedLatestEventOrder) {
             log.trace("Trying to load {} with id '{}' and expectedLatestEventOrder {}", aggregateImplementationType.getName(), aggregateId, expectedLatestEventOrder);
             UnitOfWork unitOfWork = eventStore.getUnitOfWorkFactory().getRequiredUnitOfWork();
-            var potentialPersistedEventStream = eventStore.fetchStream(eventStreamConfiguration.aggregateType,
+            var potentialPersistedEventStream = eventStore.fetchStream(aggregateTypeConfiguration.aggregateType,
                                                                        aggregateId,
                                                                        LongRange.from(EventOrder.FIRST_EVENT_ORDER.longValue())); // TODO: Support for looking up a snapshot version of the aggregate, where we only need to load events not included in the snapshot
             if (potentialPersistedEventStream.isEmpty()) {
@@ -293,7 +293,7 @@ public interface AggregateRootRepository<ID, AGGREGATE_IMPL_TYPE extends Aggrega
 
         @Override
         public AggregateType aggregateType() {
-            return eventStreamConfiguration.aggregateType;
+            return aggregateTypeConfiguration.aggregateType;
         }
 
         /**
@@ -316,7 +316,7 @@ public interface AggregateRootRepository<ID, AGGREGATE_IMPL_TYPE extends Aggrega
                         } else {
                             log.debug("Persisting {} event(s) related to '{}' with id '{}'", persistableEvents.size(), aggregateImplementationType.getName(), aggregate.aggregateId());
                         }
-                        eventStore.appendToStream(eventStreamConfiguration.aggregateType, aggregate.aggregateId(), persistableEvents);
+                        eventStore.appendToStream(aggregateTypeConfiguration.aggregateType, aggregate.aggregateId(), persistableEvents);
                         aggregate.markChangesAsCommitted();
                     }
                 });

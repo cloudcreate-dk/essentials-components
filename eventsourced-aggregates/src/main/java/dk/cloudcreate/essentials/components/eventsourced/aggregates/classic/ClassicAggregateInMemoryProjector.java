@@ -28,8 +28,8 @@ public class ClassicAggregateInMemoryProjector implements InMemoryProjector {
 
     @SuppressWarnings("unchecked")
     @Override
-    public <ID, PROJECTION> Optional<PROJECTION> projectEvents(AggregateType aggregateEventStreamName, ID aggregateId, Class<PROJECTION> projectionType, EventStore<?> eventStore) {
-        requireNonNull(aggregateEventStreamName, "No eventStreamName provided");
+    public <ID, PROJECTION> Optional<PROJECTION> projectEvents(AggregateType aggregateType, ID aggregateId, Class<PROJECTION> projectionType, EventStore<?> eventStore) {
+        requireNonNull(aggregateType, "No aggregateType provided");
         requireNonNull(aggregateId, "No aggregateId provided");
         requireNonNull(projectionType, "No aggregateType provided");
         requireNonNull(eventStore, "No eventStore instance provided");
@@ -39,7 +39,7 @@ public class ClassicAggregateInMemoryProjector implements InMemoryProjector {
         // TODO: Add support for Aggregate snapshot's
 
         var aggregate = (AggregateRoot<ID, ?>) aggregateRootInstanceFactory.create(aggregateId.getClass(), projectionType);
-        var possibleEventStream = eventStore.fetchStream(aggregateEventStreamName,
+        var possibleEventStream = eventStore.fetchStream(aggregateType,
                                                          aggregateId);
 
         return (Optional<PROJECTION>) possibleEventStream.map(aggregate::rehydrate);

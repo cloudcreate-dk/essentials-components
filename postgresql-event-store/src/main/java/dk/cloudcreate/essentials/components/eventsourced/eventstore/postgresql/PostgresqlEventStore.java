@@ -173,7 +173,7 @@ public class PostgresqlEventStore<CONFIG extends AggregateTypeConfiguration> imp
                                                                   ID aggregateId,
                                                                   Class<AGGREGATE> projectionType,
                                                                   InMemoryProjector inMemoryProjector) {
-        requireNonNull(aggregateType, "No aggregateEventStreamName provided");
+        requireNonNull(aggregateType, "No aggregateType provided");
         requireNonNull(aggregateId, "No aggregateId provided");
         requireNonNull(projectionType, "No projectionType provided");
         requireNonNull(inMemoryProjector, "No inMemoryProjector provided");
@@ -194,7 +194,7 @@ public class PostgresqlEventStore<CONFIG extends AggregateTypeConfiguration> imp
     public Stream<PersistedEvent> loadEventsByGlobalOrder(AggregateType aggregateType,
                                                           LongRange globalEventOrderRange,
                                                           Optional<Tenant> onlyIncludeEventIfItBelongsToTenant) {
-        requireNonNull(aggregateType, "No aggregateEventStreamName provided");
+        requireNonNull(aggregateType, "No aggregateType provided");
         requireNonNull(globalEventOrderRange, "You must specify a globalOrderRange");
         requireNonNull(onlyIncludeEventIfItBelongsToTenant, "You must specify an onlyIncludeEventIfItBelongsToTenant option");
 

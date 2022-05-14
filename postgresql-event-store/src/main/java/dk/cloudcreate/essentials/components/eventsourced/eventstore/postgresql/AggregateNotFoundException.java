@@ -25,10 +25,10 @@ public class AggregateNotFoundException extends EventStoreException {
                    aggregateType);
     }
 
-    public AggregateNotFoundException(Object aggregateId, Class<?> aggregateRootImplementationType, AggregateType aggregateEventStreamName, Exception cause) {
-        super(generateMessage(aggregateId, aggregateRootImplementationType, aggregateEventStreamName), cause);
+    public AggregateNotFoundException(Object aggregateId, Class<?> aggregateRootImplementationType, AggregateType aggregateType, Exception cause) {
+        super(generateMessage(aggregateId, aggregateRootImplementationType, aggregateType), cause);
         this.aggregateId = requireNonNull(aggregateId, "You must supply an aggregateId");
         this.aggregateRootImplementationType = requireNonNull(aggregateRootImplementationType, "You must supply an aggregateRootImplementationType");
-        this.aggregateType = requireNonNull(aggregateEventStreamName, "You must supply an aggregateType");
+        this.aggregateType = requireNonNull(aggregateType, "You must supply an aggregateType");
     }
 }
