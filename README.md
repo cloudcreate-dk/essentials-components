@@ -10,13 +10,13 @@ or Components such as an Event Store, Distributed Fenced Locking, Event Sourced 
 This library contains the smallest set of supporting building blocks needed for other Essentials Components libraries, such as:
 
 - **Identifiers**
-    - `CorrelationId`
-    - `EventId`
-    - `MessageId`
-    - `SubscriberId`
-    - `Tenant` and `TenantId`
+  - `CorrelationId`
+  - `EventId`
+  - `MessageId`
+  - `SubscriberId`
+  - `Tenant` and `TenantId`
 - **Common Interfaces**
-    - `Lifecycle`
+  - `Lifecycle`
 
 To use `common-types` just add the following Maven dependency:
 
@@ -28,64 +28,179 @@ To use `common-types` just add the following Maven dependency:
 </dependency>
 ```
 
-# PostgreSQL Distributed Fenced Lock
+# Event Sourced Aggregates
+This library focuses on providing different flavours of Event Source Aggregates
 
-This library provides a Postgresql based Locking Manager variant of the Fenced Locking concept described [here](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html)
+Example of an Aggregate design where the Aggregate contains the command method and all event handlers and state is contained within an `AggregateState` object:
 
+#### Order aggregate with separate state object
 ```
-public PostgresqlFencedLockManager(Jdbi jdbi,
-                                   Duration lockTimeOut,
-                                   Duration lockConfirmationInterval) {
-   ...
+public class Order extends AggregateRootWithState<OrderId, OrderState, Order> {
+    public Order() {
+    }
+
+    public Order(OrderId orderId,
+                 CustomerId orderingCustomerId,
+                 int orderNumber) {
+        requireNonNull(orderId, "You must provide an orderId");
+        requireNonNull(orderingCustomerId, "You must provide an orderingCustomerId");
+
+        apply(new OrderAdded(orderId,
+                             orderingCustomerId,
+                             orderNumber));
+    }
+
+    public void addProduct(ProductId productId, int quantity) {
+        requireNonNull(productId, "You must provide a productId");
+        if (state.accepted) {
+            throw new IllegalStateException("Order is already accepted");
+        }
+        apply(new ProductAddedToOrder(productId, quantity));
+    }
+
+    public void adjustProductQuantity(ProductId productId, int newQuantity) {
+        requireNonNull(productId, "You must provide a productId");
+        if (state.accepted) {
+            throw new IllegalStateException("Order is already accepted");
+        }
+        if (state.productAndQuantity.containsKey(productId)) {
+            apply(new ProductOrderQuantityAdjusted(productId, newQuantity));
+        }
+    }
+
+    public void removeProduct(ProductId productId) {
+        requireNonNull(productId, "You must provide a productId");
+        if (state.accepted) {
+            throw new IllegalStateException("Order is already accepted");
+        }
+        if (state.productAndQuantity.containsKey(productId)) {
+            apply(new ProductRemovedFromOrder(productId));
+        }
+    }
+
+    public void accept() {
+        if (state.accepted) {
+            return;
+        }
+        apply(new OrderAccepted());
+    }
 }
 ```
 
-Usage example:
-
+#### Event example:
 ```
-var lockManager = new PostgresqlFencedLockManager(Jdbi.create(jdbcUrl,
-                                                               username,
-                                                               password),
-                                                   Duration.ofSeconds(3),
-                                                   Duration.ofSeconds(1));
-lockManager.start();
+public final class OrderEvents {
+    public static class OrderAdded extends Event<OrderId> {
+        private CustomerId orderingCustomerId;
+        private long       orderNumber;
 
-// Try to acquire the lock. If the lock is acquired by another lock manager instance then it returns Optional.empty()
-Optional<FencedLock> lockOption = lockManager.tryAcquireLock(lockName);
+        public OrderAdded() {
+        }
 
-// Try to acquire the lock. If the lock is acquired by another lock manager instance then it will keep trying for 2 seconds and 
-// if the lock is still acquired then it will return Optional.empty()
-Optional<FencedLock> lockOption = lockManager.tryAcquireLock(lockName, Duration.ofSeconds(2));
+        public OrderAdded(OrderId orderId, CustomerId orderingCustomerId, long orderNumber) {
+            // MUST be set manually for the FIRST/INITIAL - after this the AggregateRoot ensures
+            // that the aggregateId will be set on the other events automatically
+            aggregateId(orderId);
+            this.orderingCustomerId = orderingCustomerId;
+            this.orderNumber = orderNumber;
+        }
 
-// Acquire lock. Is the lock is free then the method return immediately, otherwise it will wait until it can acquire the lock
-FencedLock lock = lockManager.acquireLock(lockName);
+        public CustomerId getOrderingCustomerId() {
+            return orderingCustomerId;
+        }
 
-// Perform an asynchronos lock acquiring
-lockManager.acquireLockAsync(lockName, new LockCallback() {
-    @Override
-    public void lockReleased(FencedLock lock) {
-        
+        public long getOrderNumber() {
+            return orderNumber;
+        }
     }
 
-    @Override
-    public void lockAcquired(FencedLock lock) {
+    public static class ProductAddedToOrder extends Event<OrderId> {
+        private ProductId productId;
+        private int       quantity;
 
+        public ProductAddedToOrder() {
+        }
+
+        public ProductAddedToOrder(ProductId productId, int quantity) {
+            this.productId = productId;
+            this.quantity = quantity;
+        }
+
+        public ProductId getProductId() {
+            return productId;
+        }
+
+        public int getQuantity() {
+            return quantity;
+        }
     }
+    ...
+}
+```
+
+#### OrderState:
+```
+public class OrderState extends AggregateState<OrderId> {
+    Map<ProductId, Integer> productAndQuantity;
+    boolean                 accepted;
+
+    @EventHandler
+    private void on(OrderAdded e) {
+        productAndQuantity = new HashMap<>();
+    }
+
+    @EventHandler
+    private void on(ProductAddedToOrder e) {
+        var existingQuantity = productAndQuantity.get(e.getProductId());
+        productAndQuantity.put(e.getProductId(), e.getQuantity() + (existingQuantity != null ? existingQuantity : 0));
+    }
+
+    @EventHandler
+    private void on(ProductOrderQuantityAdjusted e) {
+        productAndQuantity.put(e.getProductId(), e.getNewQuantity());
+    }
+
+    @EventHandler
+    private void on(ProductRemovedFromOrder e) {
+        productAndQuantity.remove(e.getProductId());
+    }
+
+    @EventHandler
+    private void on(OrderAccepted e) {
+        accepted = true;
+    }
+}
+```
+
+###Aggregate repository
+```
+var orders = AggregateType.of("Orders");
+var ordersRepository = AggregateRootRepository.from(eventStore,
+                                                    standardSingleTenantConfigurationUsingJackson(orders,
+                                                        createObjectMapper(),
+                                                        AggregateIdSerializer.serializerFor(OrderId.class),
+                                                        IdentifierColumnType.UUID,
+                                                        JSONColumnType.JSONB),
+                                                    defaultConstructorFactory(),
+                                                    Order.class);
+
+var orderId = OrderId.random();
+unitOfWorkFactory.usingUnitOfWork(unitOfWork -> {                                                    
+   var order = new Order(orderId, CustomerId.random(), 1234);
+   order.addProduct(ProductId.random(), 2);
+   ordersRepository.persist(order);
 });
 
-// The current fenced token can accessed through
-long fenceToken = fencedLock.getCurrentToken(); 
-
-// You can check if a lock is acquired by the lock manager that returned it
-fencedLock.isLockedByThisLockManagerInstance();
+// Using Spring Transaction Template
+var order = transactionTemplate.execute(status -> ordersRepository.load(orderId));
 ```
 
-To use `PostgreSQL Distributed Fenced Lock` just add the following Maven dependency:
+To use `EventSourced Aggregates` just add the following Maven dependency:
 
 ```
 <dependency>
-    <groupId>dk.cloudcreate.essentials.components</groupId>
-    <artifactId>postgresql-distributed-fenced-lock</artifactId>
+    <groupId>dk.cloudcreate.essentials.components/groupId>
+    <artifactId>eventsourced-aggregates</artifactId>
     <version>0.1.0</version>
 </dependency>
 ```
@@ -169,7 +284,7 @@ An `AggregateType` is used for grouping/categorizing multiple `AggregateEventStr
 This allows us to easily retrieve or be notified of new Events related to the same type of Aggregates (such as when using `EventStore#pollEvents(..)`)     
 Using `SeparateTablePerAggregateTypePersistenceStrategy` means that each `AggregateType` will be persisted in a separate event store table.
 
-You can add as many `AggregateType` configurations as needed, but they need to be added BEFORE you try to persist or load events related to 
+You can add as many `AggregateType` configurations as needed, but they need to be added BEFORE you try to persist or load events related to
 a given `AggregateType`.
 
 ```
@@ -185,7 +300,7 @@ eventStore.addAggregateTypeConfiguration(
 ### ObjectMapper setup
 The setup of the `ObjectMapper` needs to support the type of Events being persisted.
 Below is an example of an immutable Event design, which requires the `ObjectMapper` to be configured
-with the [Essentials Immutable-Jackson](https://github.com/cloudcreate-dk/essentials/tree/main/immutable-jackson) module's `EssentialsImmutableJacksonModule`: 
+with the [Essentials Immutable-Jackson](https://github.com/cloudcreate-dk/essentials/tree/main/immutable-jackson) module's `EssentialsImmutableJacksonModule`:
 ```
 public class OrderEvent {
     public final OrderId orderId;
@@ -275,7 +390,7 @@ eventStore.localEventBus().addAsyncSubscriber(persistedEvents -> {
 ```
 
 ## EventStore asynchronous Event polling
-You can also poll for events using the `EventStore` event polling mechanism, which allows you to subscribe to any point in an EventStream related to a 
+You can also poll for events using the `EventStore` event polling mechanism, which allows you to subscribe to any point in an EventStream related to a
 given type of Aggregate:
 ```
 disposableFlux = eventStore.pollEvents(orders, // Aggregatetype
@@ -291,18 +406,18 @@ disposableFlux = eventStore.pollEvents(orders, // Aggregatetype
 ## EventStore SubscriptionManager
 Finally, you can use the `EventStoreSubscriptionManager`, which supports:
 
-###Subscribe asynchronously 
-Using asynchronous event subscription the `EventStoreSubscriptionManager` will keep track of 
+###Subscribe asynchronously
+Using asynchronous event subscription the `EventStoreSubscriptionManager` will keep track of
 where the individual Subscribers `ResumePoint` in the AggregateType EventStream's they subscribing to:
 - `exclusivelySubscribeToAggregateEventsAsynchronously` - uses the `FencedLockManager` to ensure that only a single subscriber, with the same combination of `SubscriberId` and `AggregateType`, in the cluster can subscribe.
 - `subscribeToAggregateEventsAsynchronously` - same as above, just without using the `FencedLockManager` to coordinate subscribers in a cluster
 
 ### Subscribe synchronously
-Synchronous subscription allows you to receive and react to Events published within the active Transaction/`UnitOfWork` that's involved in `appending` the events to the `EventStream` 
+Synchronous subscription allows you to receive and react to Events published within the active Transaction/`UnitOfWork` that's involved in `appending` the events to the `EventStream`
 This can be useful for certain transactional views/projections where you require transactional consistency (e.g. assigning a sequential customer number, etc.):
 - `subscribeToAggregateEventsInTransaction`
 
-Example using `exclusivelySubscribeToAggregateEventsAsynchronously`: 
+Example using `exclusivelySubscribeToAggregateEventsAsynchronously`:
 ```
 var eventStoreSubscriptionManager = EventStoreSubscriptionManager.createFor(eventStore,
                                                                              50,
@@ -348,8 +463,8 @@ To use `Postgresql Event Store` just add the following Maven dependency:
 
 ##Features coming soon
 - Subscription Manager event gap detection
-- Improved Subscription Manager error handling (e.g. using the `PostgreSQL Durable Queue`) 
-- EventStore asynchronous event-subscription using Postgresql Notify functionality to only poll when there have been events appended to the `EventStream` 
+- Improved Subscription Manager error handling (e.g. using the `PostgreSQL Durable Queue`)
+- EventStore asynchronous event-subscription using Postgresql Notify functionality to only poll when there have been events appended to the `EventStream`
 
 # Spring PostgreSQL Event Store
 
@@ -419,130 +534,64 @@ To use `Spring Postgresql Event Store` just add the following Maven dependency:
 </dependency>
 ```
 
-# Event Sourced Aggregates
+# PostgreSQL Distributed Fenced Lock
 
-This library focuses on providing different falvours of Event Source Aggregates
-
-Aggregate design where the Aggregate contains the command method and all event handlers and state is contained within an `AggregateState` object:
+This library provides a Postgresql based Locking Manager variant of the Fenced Locking concept described [here](https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html)
 
 ```
-public class Order extends AggregateRootWithState<OrderId, OrderState, Order> {
-    public Order() {
-    }
-
-    public Order(OrderId orderId,
-                 CustomerId orderingCustomerId,
-                 int orderNumber) {
-        requireNonNull(orderId, "You must provide an orderId");
-        requireNonNull(orderingCustomerId, "You must provide an orderingCustomerId");
-
-        apply(new OrderAdded(orderId,
-                             orderingCustomerId,
-                             orderNumber));
-    }
-
-    public void addProduct(ProductId productId, int quantity) {
-        requireNonNull(productId, "You must provide a productId");
-        if (state.accepted) {
-            throw new IllegalStateException("Order is already accepted");
-        }
-        apply(new ProductAddedToOrder(productId, quantity));
-    }
-
-    public void adjustProductQuantity(ProductId productId, int newQuantity) {
-        requireNonNull(productId, "You must provide a productId");
-        if (state.accepted) {
-            throw new IllegalStateException("Order is already accepted");
-        }
-        if (state.productAndQuantity.containsKey(productId)) {
-            apply(new ProductOrderQuantityAdjusted(productId, newQuantity));
-        }
-    }
-
-    public void removeProduct(ProductId productId) {
-        requireNonNull(productId, "You must provide a productId");
-        if (state.accepted) {
-            throw new IllegalStateException("Order is already accepted");
-        }
-        if (state.productAndQuantity.containsKey(productId)) {
-            apply(new ProductRemovedFromOrder(productId));
-        }
-    }
-
-    public void accept() {
-        if (state.accepted) {
-            return;
-        }
-        apply(new OrderAccepted());
-    }
+public PostgresqlFencedLockManager(Jdbi jdbi,
+                                   Duration lockTimeOut,
+                                   Duration lockConfirmationInterval) {
+   ...
 }
 ```
 
-OrderState:
+Usage example:
 
 ```
-public class OrderState extends AggregateState<OrderId> {
-    Map<ProductId, Integer> productAndQuantity;
-    boolean                 accepted;
+var lockManager = new PostgresqlFencedLockManager(Jdbi.create(jdbcUrl,
+                                                               username,
+                                                               password),
+                                                   Duration.ofSeconds(3),
+                                                   Duration.ofSeconds(1));
+lockManager.start();
 
-    @EventHandler
-    private void on(OrderAdded e) {
-        productAndQuantity = new HashMap<>();
+// Try to acquire the lock. If the lock is acquired by another lock manager instance then it returns Optional.empty()
+Optional<FencedLock> lockOption = lockManager.tryAcquireLock(lockName);
+
+// Try to acquire the lock. If the lock is acquired by another lock manager instance then it will keep trying for 2 seconds and 
+// if the lock is still acquired then it will return Optional.empty()
+Optional<FencedLock> lockOption = lockManager.tryAcquireLock(lockName, Duration.ofSeconds(2));
+
+// Acquire lock. Is the lock is free then the method return immediately, otherwise it will wait until it can acquire the lock
+FencedLock lock = lockManager.acquireLock(lockName);
+
+// Perform an asynchronos lock acquiring
+lockManager.acquireLockAsync(lockName, new LockCallback() {
+    @Override
+    public void lockReleased(FencedLock lock) {
+        
     }
 
-    @EventHandler
-    private void on(ProductAddedToOrder e) {
-        var existingQuantity = productAndQuantity.get(e.getProductId());
-        productAndQuantity.put(e.getProductId(), e.getQuantity() + (existingQuantity != null ? existingQuantity : 0));
+    @Override
+    public void lockAcquired(FencedLock lock) {
+
     }
-
-    @EventHandler
-    private void on(ProductOrderQuantityAdjusted e) {
-        productAndQuantity.put(e.getProductId(), e.getNewQuantity());
-    }
-
-    @EventHandler
-    private void on(ProductRemovedFromOrder e) {
-        productAndQuantity.remove(e.getProductId());
-    }
-
-    @EventHandler
-    private void on(OrderAccepted e) {
-        accepted = true;
-    }
-}
-```
-
-Aggregate repository
-
-```
-var orders = AggregateType.of("Orders");
-var ordersRepository = AggregateRootRepository.from(eventStore,
-                                                    standardSingleTenantConfigurationUsingJackson(orders,
-                                                        createObjectMapper(),
-                                                        AggregateIdSerializer.serializerFor(OrderId.class),
-                                                        IdentifierColumnType.UUID,
-                                                        JSONColumnType.JSONB),
-                                                    defaultConstructorFactory(),
-                                                    Order.class);
-
-var orderId = OrderId.random();
-unitOfWorkFactory.usingUnitOfWork(unitOfWork -> {                                                    
-   var order = new Order(orderId, CustomerId.random(), 1234);
-   order.addProduct(ProductId.random(), 2);
-   ordersRepository.persist(order);
 });
 
-// Using Spring Transaction Template
-var order = transactionTemplate.execute(status -> ordersRepository.load(orderId));
+// The current fenced token can accessed through
+long fenceToken = fencedLock.getCurrentToken(); 
+
+// You can check if a lock is acquired by the lock manager that returned it
+fencedLock.isLockedByThisLockManagerInstance();
 ```
 
-To use `EventSourced Aggregates` just add the following Maven dependency:
+To use `PostgreSQL Distributed Fenced Lock` just add the following Maven dependency:
 
 ```
 <dependency>
-    <groupId>dk.cloudcreate.essentials.components/groupId>
-    <artifactId>eventsourced-aggregates</artifactId>
+    <groupId>dk.cloudcreate.essentials.components</groupId>
+    <artifactId>postgresql-distributed-fenced-lock</artifactId>
     <version>0.1.0</version>
 </dependency>
 ```
@@ -550,5 +599,4 @@ To use `EventSourced Aggregates` just add the following Maven dependency:
 ## PostgreSQL Durable Queue
 
 This library focuses purely on providing a durable Queue with support for DLQ (Dead Letter Queue) and message redelivery
-
-....
+Coming soon
