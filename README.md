@@ -7,16 +7,17 @@ or Components such as an Event Store, Distributed Fenced Locking, Event Sourced 
 **The libraries are WORK-IN-PROGRESS**
 
 # Common-Types
+
 This library contains the smallest set of supporting building blocks needed for other Essentials Components libraries, such as:
 
 - **Identifiers**
-  - `CorrelationId`
-  - `EventId`
-  - `MessageId`
-  - `SubscriberId`
-  - `Tenant` and `TenantId`
+    - `CorrelationId`
+    - `EventId`
+    - `MessageId`
+    - `SubscriberId`
+    - `Tenant` and `TenantId`
 - **Common Interfaces**
-  - `Lifecycle`
+    - `Lifecycle`
 
 To use `common-types` just add the following Maven dependency:
 
@@ -29,11 +30,18 @@ To use `common-types` just add the following Maven dependency:
 ```
 
 # Event Sourced Aggregates
-This library focuses on providing different flavours of Event Source Aggregates
 
-Example of an Aggregate design where the Aggregate contains the command method and all event handlers and state is contained within an `AggregateState` object:
+This library focuses on providing different flavours of Event Source Aggregates that are built to work with the `EventStore` concept.  
+The `EventStore` is very flexible and doesn't specify any specific design requirements for an Aggregate or its Events, except that that have to be associated with an `AggregateType` (see the 
+`AggregateType` sub section or the `EventStore` section for more information).
+
+This library supports multiple flavours of Aggregate design such as the `AggregateRoot`, `AggregateRootWithState` and the `FlexAggregate`.   
 
 #### Order aggregate with separate state object
+
+Below is an example of an `Order` aggregate based on the `AggregateRootWithState` concept, where the Aggregate contains the command methods and all event handlers and state are contained
+within an `AggregateState` object, which in this case is called the `OrderState`:
+
 ```
 public class Order extends AggregateRootWithState<OrderId, OrderState, Order> {
     public Order() {
@@ -88,6 +96,10 @@ public class Order extends AggregateRootWithState<OrderId, OrderState, Order> {
 ```
 
 #### Event example:
+
+The `AggregateRoot` (and by extension the `AggregateRootWithState`) defines a root/base `Event` which all events must inherit from.  
+*Note: The `FlexAggregate` doesn't apply any requirements on Events, it can be POJO's (Plain Old Java Objects), `Record`'s, etc.*
+
 ```
 public final class OrderEvents {
     public static class OrderAdded extends Event<OrderId> {
@@ -139,6 +151,7 @@ public final class OrderEvents {
 ```
 
 #### OrderState:
+The state object must inherit from the `AggregateState` base class:
 ```
 public class OrderState extends AggregateState<OrderId> {
     Map<ProductId, Integer> productAndQuantity;
@@ -172,11 +185,45 @@ public class OrderState extends AggregateState<OrderId> {
 }
 ```
 
-###Aggregate repository
+### AggregateType
+Each Aggregate implementation class (such as the `Order` Aggregate above) needs to be associated with an `AggregateType`.  
+An `AggregateType` should not be confused with the Java implementation class for your Aggregate.
+
+An `AggregateType` is used for grouping/categorizing multiple `AggregateEventStream` instances related to similar types of aggregates.  
+This allows us to easily retrieve or be notified of new Events related to the same type of Aggregates (such as when using `EventStore#pollEvents(..)`)     
+Using `SeparateTablePerAggregateTypePersistenceStrategy` means that each `AggregateType` will be persisted in a separate event store table.
+
+What's important here is that the AggregateType is only a name and shouldn't be confused with the Fully Qualified Class Name of the Aggregate implementation class.  
+This is the classical split between the logical concept and the physical implementation.  
+It's important to not link the Aggregate Implementation Class (the Fully Qualified Class Name) with the AggregateType name as that would make refactoring of your code base much harder, as the Fully
+Qualified Class Name then would be captured in the stored Events.   
+Had the AggregateType and the Aggregate Implementation Class been one and the same, then moving the Aggregate class to another package or renaming it would break many things.
+
+To avoid the temptation to use the same name for both the AggregateType and the Aggregate Implementation Class, we prefer using the plural name of the Aggregate as the AggregateType name.  
+Example:
+
+| Aggregate-Type | Aggregate Root Implementation Class (Fully Qualified Class Name) | Top-level Event Type (Fully Qualified Class Name) |  
+|----------------|------------------------------------------------------------------|---------------------------------------------------|
+| Orders         | com.mycompany.project.persistence.Order                          | com.mycompany.project.persistence.OrderEvent      |
+| Accounts       | com.mycompany.project.persistence.Account                        | com.mycompany.project.persistence.AccountEvent    |
+| Customer       | com.mycompany.project.persistence.Customer                       | com.mycompany.project.persistence.CustomerEvent   |
+
+You can add as many `AggregateType` configurations as needed, but they need to be added BEFORE you try to persist or load events related to a given `AggregateType`.
+
+### AggregateRoot Repository
+
+In order to acquire an `AggregateRootRepository` instance for your Aggregate Root Implementation Class, you need to call the static method `from`
+on the `AggregateRootRepository` interface.
+
+Apart from providing an instance of the `EventStore` you also need to provide an `AggregateTypeConfiguration`, such as the `SeparateTablePerAggregateTypeConfiguration`
+that instructs the `EventStore`'s  persistence strategy, such as the `SeparateTablePerAggregateTypePersistenceStrategy` how to map your Java Events into JSON in the Event Store.
+(see the `PostgreSQL Event Store` section for details on configuring the `EventStore`)
+
 ```
 var orders = AggregateType.of("Orders");
 var ordersRepository = AggregateRootRepository.from(eventStore,
-                                                    standardSingleTenantConfigurationUsingJackson(orders,
+                                                    standardSingleTenantConfigurationUsingJackson(
+                                                        orders,
                                                         createObjectMapper(),
                                                         AggregateIdSerializer.serializerFor(OrderId.class),
                                                         IdentifierColumnType.UUID,
@@ -196,7 +243,6 @@ var order = transactionTemplate.execute(status -> ordersRepository.load(orderId)
 ```
 
 To use `EventSourced Aggregates` just add the following Maven dependency:
-
 ```
 <dependency>
     <groupId>dk.cloudcreate.essentials.components/groupId>
@@ -209,7 +255,61 @@ To use `EventSourced Aggregates` just add the following Maven dependency:
 
 This library contains a fully features Event Store
 
+## Concept
+
+The primary concept of the EventStore are **Event Streams**   
+Definition: An Event Stream is a collection of related Events *(e.g. Order events that are related to Order aggregate instances)*   
+The most common denominator for Events in an Event Stream is the Type of Aggregate they're associated with.  
+Classical examples of Aggregate Types and their associated events are:
+- **Order** aggregate  
+  *Examples of Order Events:*
+  - OrderCreated
+  - ProductAddedToOrder
+  - ProductRemoveFromOrder
+  - OrderAccepted
+- **Account** aggregate  
+  *Examples of Account Events:*
+  - AccountRegistered
+  - AccountCredited
+  - AccountDebited
+- **Customer** aggregate  
+  *Examples of Customer Events:*
+  - CustomerRegistered
+  - CustomerMoved
+  - CustomersAddressCorrected
+  - CustomerStatusChanged
+
+We could put all Events from all Aggregate Types into one Event Stream, but this is often not very useful:
+- From a usage and use case perspective it makes more sense to subscribe and handle events related to the same type of Aggregates separate from the handling of other Events related to other types of Aggregates.  
+  - E.g. it makes more sense to handle Order related Events separate from Account related Events
+- Using the `SeparateTablePerAggregateTypePersistenceStrategy` we can store all Events related to a specific `AggregateType` in a separate table from other Aggregate types, which is more efficient and allows us to store many more Events related to this given `AggregateType`.  
+  This allows use to use the PersistedEvent.globalEventOrder() to track the order in which Events, related to the same type of Aggregate, were persisted.    
+  This also allows us to use the GlobalEventOrder as a natual Resume.Point for the EventStore subscriptions (see EventStoreSubscriptionManager)  
+
+This aligns with the concept of the `AggregateEventStream` which contains Events related to a specific `AggregateType` with a distinct **AggregateId**  
+When loading/fetching and persisting/appending Events we always work at the Aggregate instance level, i.e. with `AggregateEventStream`'s.  
+
+The `AggregateType` is used for grouping/categorizing multiple `AggregateEventStream` instances related to similar types of aggregates.  
+Unless you're using a fully functional style aggregate where you only perform a Left-Fold of all Events in an AggregateEventStream, then there will typically be 
+a 1-1 relationship between an `AggregateType` and the class that implements the Aggregate.  
+
+What's important here is that the `AggregateType` is only a name and shouldn't be confused with the Fully Qualified Class Name of the Aggregate implementation class.   
+This is the classical split between the logical concept and the physical implementation.  
+It's important to not link the Aggregate Implementation Class (the Fully Qualified Class Name) with the AggregateType name as that would make refactoring of your code 
+base much harder, as the Fully Qualified Class Name then would be captured in the stored Events.  
+Had the `AggregateType` and the Aggregate Implementation Class been one and the same, then moving the Aggregate class to another package or renaming it would break many 
+things.   
+To avoid the temptation to use the same name for both the AggregateType and the Aggregate Implementation Class, we prefer using the **plural name** of the Aggregate as the `AggregateType` name.  
+Example:
+
+| Aggregate-Type | Aggregate Implementation Class (Fully Qualified Class Name) | Top-level Event Type (Fully Qualified Class Name) |  
+|----------------|-------------------------------------------------------------|---------------------------------------------------|
+| Orders         | com.mycompany.project.persistence.Order                     | com.mycompany.project.persistence.OrderEvent      |
+| Accounts       | com.mycompany.project.persistence.Account                   | com.mycompany.project.persistence.AccountEvent    |
+| Customer       | com.mycompany.project.persistence.Customer                  | com.mycompany.project.persistence.CustomerEvent   |
+
 ## Setup JDBI
+
 The `PostgresqlEventStore` internally uses the Jdbi JDBC API.  
 Below is an example of how to configure Jdbi - See `Spring-PostgreSQL Event Store` for a Spring oriented setup
 
@@ -222,6 +322,7 @@ jdbi.setSqlLogger(new EventStoreSqlLogger());
 ```
 
 Example of setting up Jdbi using `HikariDataSource`:
+
 ```
 HikariConfig hikariConfig = new HikariConfig();
 hikariConfig.setJdbcUrl(jdbcUrl);
@@ -235,7 +336,8 @@ jdbi.setSqlLogger(new EventStoreSqlLogger());
 ```
 
 ## UnitOfWork / Transaction Management
-Setup the EventStore using transaction/UnitOfWork management by the EventStore (e.g. instead of Spring)  
+
+Setup the EventStore using transaction/UnitOfWork management by the EventStore: `EventStoreManagedUnitOfWorkFactory`    
 See `Spring-PostgreSQL Event Store` for a Spring oriented setup
 
 ```
@@ -247,8 +349,11 @@ eventStore = new PostgresqlEventStore<>(unitOfWorkFactory,
 ```
 
 ## PersistableEventMapper
-The `MyPersistableEventMapper` is a mapper that you need to write in order to provide a translation between generic Events such as OrderAdded, OrderAccepted and the `PersistableEvent` type that
-the `EventStore` knows how to persist. The custom `PersistableEventMapper` can also provide context specific information such as `Tenant`, `CorrelationId`, etc.  
+
+The `MyPersistableEventMapper` is a mapper that you need to write in order to provide a translation between generic Java based Events such as `OrderAdded`, `OrderAccepted` and the `PersistableEvent` type that
+the `EventStore` knows how to persist.  
+The custom `PersistableEventMapper` can also provide context specific information such as `Tenant`, `CorrelationId`, etc.  
+
 Here an example of a `TestPersistableEventMapper`:
 
 ```
@@ -279,13 +384,28 @@ class TestPersistableEventMapper implements PersistableEventMapper {
 
 ## Define the `AggregateType`'s that can be persisted.
 
-An `AggregateType` should not be confused with the Java implementation class for your Aggregate (see the `EventSourced-Aggregates` module).  
+An `AggregateType` should not be confused with the Java implementation class for your Aggregate (see the `EventSourced-Aggregates` module).
+
 An `AggregateType` is used for grouping/categorizing multiple `AggregateEventStream` instances related to similar types of aggregates.  
 This allows us to easily retrieve or be notified of new Events related to the same type of Aggregates (such as when using `EventStore#pollEvents(..)`)     
 Using `SeparateTablePerAggregateTypePersistenceStrategy` means that each `AggregateType` will be persisted in a separate event store table.
 
-You can add as many `AggregateType` configurations as needed, but they need to be added BEFORE you try to persist or load events related to
-a given `AggregateType`.
+What's important here is that the AggregateType is only a name and shouldn't be confused with the Fully Qualified Class Name of the Aggregate implementation class.  
+This is the classical split between the logical concept and the physical implementation.  
+It's important to not link the Aggregate Implementation Class (the Fully Qualified Class Name) with the AggregateType name as that would make refactoring of your code base much harder, as the Fully
+Qualified Class Name then would be captured in the stored Events.   
+Had the AggregateType and the Aggregate Implementation Class been one and the same, then moving the Aggregate class to another package or renaming it would break many things.
+
+To avoid the temptation to use the same name for both the AggregateType and the Aggregate Implementation Class, we prefer using the plural name of the Aggregate as the AggregateType name.  
+Example:
+
+| Aggregate-Type | Aggregate Implementation Class (Fully Qualified Class Name) | Top-level Event Type (Fully Qualified Class Name) |  
+|----------------|-------------------------------------------------------------|---------------------------------------------------|
+| Orders         | com.mycompany.project.persistence.Order                     | com.mycompany.project.persistence.OrderEvent      |
+| Accounts       | com.mycompany.project.persistence.Account                   | com.mycompany.project.persistence.AccountEvent    |
+| Customer       | com.mycompany.project.persistence.Customer                  | com.mycompany.project.persistence.CustomerEvent   |
+
+You can add as many `AggregateType` configurations as needed, but they need to be added BEFORE you try to persist or load events related to a given `AggregateType`.
 
 ```
 var orders = AggregateType.of("Order");
@@ -298,9 +418,14 @@ eventStore.addAggregateTypeConfiguration(
 ```
 
 ### ObjectMapper setup
-The setup of the `ObjectMapper` needs to support the type of Events being persisted.
-Below is an example of an immutable Event design, which requires the `ObjectMapper` to be configured
-with the [Essentials Immutable-Jackson](https://github.com/cloudcreate-dk/essentials/tree/main/immutable-jackson) module's `EssentialsImmutableJacksonModule`:
+
+The setup of the `ObjectMapper` needs to support the type of Events being persisted.  
+To support storing the strong types, such as `EventId` used by the `PersistedEvent` type, the ObjectMapper needs to be configured with the
+[Essential Types Jackson]|(https://github.com/cloudcreate-dk/essentials/tree/main/types-jackson) module's `EssentialTypesJacksonModule`.
+
+Below is an example of an immutable Event design, which requires the `ObjectMapper` to be configured with
+the [Essentials Immutable-Jackson](https://github.com/cloudcreate-dk/essentials/tree/main/immutable-jackson) module's `EssentialsImmutableJacksonModule`:
+
 ```
 public class OrderEvent {
     public final OrderId orderId;
@@ -333,7 +458,6 @@ public class OrderEvent {
 }
 ```
 
-
 ```
 private ObjectMapper createObjectMapper() {
     var objectMapper = JsonMapper.builder()
@@ -363,7 +487,10 @@ private ObjectMapper createObjectMapper() {
 ```
 
 ## Appending Events to an AggregateType's EventStream
+Example of appending the `OrderAdded` event, related to the `"Orders"` `AggregateType` with **aggregateId** specified by the `orderId` variable:
 ```
+var orders = AggregateType.of("Order");
+
 eventStore.unitOfWorkFactory().usingUnitOfWork(unitOfWork -> {
    var orderId = OrderId.random();
    eventStore.appendToStream(orders,
@@ -372,6 +499,11 @@ eventStore.unitOfWorkFactory().usingUnitOfWork(unitOfWork -> {
                                             CustomerId.random(),
                                             1234));
 });
+```
+
+Example fetching an `AggregateEventStream` for the `"Orders"` `AggregateType` with **aggregateId** specified by the `orderId` variable:
+```
+var orders = AggregateType.of("Order");
 
 var events = eventStore.unitOfWorkFactory().withUnitOfWork(unitOfWork -> {
   return eventStore.fetchStream(orders, orderId);
@@ -379,7 +511,9 @@ var events = eventStore.unitOfWorkFactory().withUnitOfWork(unitOfWork -> {
 ```
 
 ## LocalEventBus event subscription
+
 You can subscribe (synchronous or asynchronous) to events directly on the `EventStore` by e.g. listening til the `LocalEventBus`
+
 ```
 eventStore.localEventBus().addSyncSubscriber(persistedEvents -> {
             
@@ -390,9 +524,11 @@ eventStore.localEventBus().addAsyncSubscriber(persistedEvents -> {
 ```
 
 ## EventStore asynchronous Event polling
-You can also poll for events using the `EventStore` event polling mechanism, which allows you to subscribe to any point in an EventStream related to a
-given type of Aggregate:
+
+You can also poll for events using the `EventStore` event polling mechanism, which allows you to subscribe to any point in an EventStream related to a given type of Aggregate:
+
 ```
+var orders = AggregateType.of("Order");
 disposableFlux = eventStore.pollEvents(orders, // Aggregatetype
                                            GlobalEventOrder.FIRST_GLOBAL_EVENT_ORDER,
                                            Optional.empty(),
@@ -404,20 +540,26 @@ disposableFlux = eventStore.pollEvents(orders, // Aggregatetype
 ```
 
 ## EventStore SubscriptionManager
+
 Finally, you can use the `EventStoreSubscriptionManager`, which supports:
 
-###Subscribe asynchronously
-Using asynchronous event subscription the `EventStoreSubscriptionManager` will keep track of
-where the individual Subscribers `ResumePoint` in the AggregateType EventStream's they subscribing to:
-- `exclusivelySubscribeToAggregateEventsAsynchronously` - uses the `FencedLockManager` to ensure that only a single subscriber, with the same combination of `SubscriberId` and `AggregateType`, in the cluster can subscribe.
+### Subscribe asynchronously
+
+Using asynchronous event subscription the `EventStoreSubscriptionManager` will keep track of where the individual Subscribers `ResumePoint` in the AggregateType EventStream's they subscribing to:
+
+- `exclusivelySubscribeToAggregateEventsAsynchronously` - uses the `FencedLockManager` to ensure that only a single subscriber, with the same combination of `SubscriberId` and `AggregateType`, in the
+  cluster can subscribe.
 - `subscribeToAggregateEventsAsynchronously` - same as above, just without using the `FencedLockManager` to coordinate subscribers in a cluster
 
 ### Subscribe synchronously
+
 Synchronous subscription allows you to receive and react to Events published within the active Transaction/`UnitOfWork` that's involved in `appending` the events to the `EventStream`
 This can be useful for certain transactional views/projections where you require transactional consistency (e.g. assigning a sequential customer number, etc.):
+
 - `subscribeToAggregateEventsInTransaction`
 
 Example using `exclusivelySubscribeToAggregateEventsAsynchronously`:
+
 ```
 var eventStoreSubscriptionManager = EventStoreSubscriptionManager.createFor(eventStore,
                                                                              50,
@@ -429,9 +571,10 @@ var eventStoreSubscriptionManager = EventStoreSubscriptionManager.createFor(even
                                                                              new PostgresqlDurableSubscriptionRepository(jdbi));
 eventStoreSubscriptionManager.start();
 
+var orders = AggregateType.of("Order");
 var productsSubscription = eventStoreSubscriptionManager.exclusivelySubscribeToAggregateEventsAsynchronously(
-        SubscriberId.of("ProductsSub1"),
-        AggregateType.of("Products"),
+        SubscriberId.of("OrdersSub1"),
+        orders,
         GlobalEventOrder.FIRST_GLOBAL_EVENT_ORDER, // The initial subscription points. Only applies the first time you subscribe
                                                    // All subsequent subscriptions for the same subscriber, the EventStoreSubscriptionManager
                                                    // keeps track of the Resume Point using the PostgresqlDurableSubscriptionRepository
@@ -461,7 +604,8 @@ To use `Postgresql Event Store` just add the following Maven dependency:
 </dependency>
 ```
 
-##Features coming soon
+## Features coming soon
+
 - Subscription Manager event gap detection
 - Improved Subscription Manager error handling (e.g. using the `PostgreSQL Durable Queue`)
 - EventStore asynchronous event-subscription using Postgresql Notify functionality to only poll when there have been events appended to the `EventStream`
@@ -598,5 +742,4 @@ To use `PostgreSQL Distributed Fenced Lock` just add the following Maven depende
 
 ## PostgreSQL Durable Queue
 
-This library focuses purely on providing a durable Queue with support for DLQ (Dead Letter Queue) and message redelivery
-Coming soon
+This library focuses purely on providing a durable Queue with support for DLQ (Dead Letter Queue) and message redelivery Coming soon
