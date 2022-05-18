@@ -6,7 +6,7 @@ import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.p
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.serializer.json.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.*;
 
-import java.time.*;
+import java.time.OffsetDateTime;
 import java.util.*;
 
 import static dk.cloudcreate.essentials.shared.FailFast.requireNonNull;
@@ -14,8 +14,8 @@ import static dk.cloudcreate.essentials.shared.FailFast.requireNonNull;
 /**
  * Common interface for an Event that has been persisted (as opposed to a {@link PersistableEvent} which is an Event that
  * haven't yet been persisted by the {@link EventStore})<br>
- * You can create a new instance using {@link #from(EventId, AggregateType, Object, EventJSON, EventOrder, EventRevision, GlobalEventOrder, EventMetaDataJSON, ZonedDateTime, Optional, Optional, Optional)}
- * or {@link DefaultPersistedEvent#DefaultPersistedEvent(EventId, AggregateType, Object, EventJSON, EventOrder, EventRevision, GlobalEventOrder, EventMetaDataJSON, ZonedDateTime, Optional, Optional, Optional)}
+ * You can create a new instance using {@link #from(EventId, AggregateType, Object, EventJSON, EventOrder, EventRevision, GlobalEventOrder, EventMetaDataJSON, OffsetDateTime, Optional, Optional, Optional)}
+ * or {@link DefaultPersistedEvent#DefaultPersistedEvent(EventId, AggregateType, Object, EventJSON, EventOrder, EventRevision, GlobalEventOrder, EventMetaDataJSON, OffsetDateTime, Optional, Optional, Optional)}
  * <br>
  * Two {@link PersistedEvent}'s are <b>equal</b> if the have the same {@link #eventId()} value<br>
  * If you want to compare the contents, please use {@link #valueEquals(PersistedEvent)}

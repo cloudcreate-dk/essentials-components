@@ -153,6 +153,12 @@ public class EventTypeOrName extends Either<EventType, EventName> {
         }
     }
 
+    /**
+     * If {@link #hasEventName()} then the {@link EventName}'s String value is returned<br>
+     * If {@link #hasEventType()} then the {@link EventType#getJavaTypeName()} is returned
+     *
+     * @return the value of the {@link EventName} or {@link EventType} stored in this instance
+     */
     public String getValue() {
         if (_1 != null) {
             return _1.getJavaTypeName();
