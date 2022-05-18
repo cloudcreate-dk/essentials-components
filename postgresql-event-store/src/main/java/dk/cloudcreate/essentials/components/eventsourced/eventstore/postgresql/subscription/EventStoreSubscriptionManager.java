@@ -403,7 +403,8 @@ public interface EventStoreSubscriptionManager extends Lifecycle {
                 log.error(msg("[{}-{}] (#{}) Skipping {} event because of error",
                               subscriberId,
                               aggregateType,
-                              e.globalEventOrder()), cause);
+                              e.globalEventOrder(),
+                              e.event().getEventTypeOrName().getValue()), cause);
             }
 
             @Override
@@ -559,7 +560,8 @@ public interface EventStoreSubscriptionManager extends Lifecycle {
                 log.error(msg("[{}-{}] (#{}) Skipping {} event because of error",
                               subscriberId,
                               aggregateType,
-                              e.globalEventOrder()), cause);
+                              e.globalEventOrder(),
+                              e.event().getEventTypeOrName().getValue()), cause);
             }
 
             @Override
@@ -803,7 +805,8 @@ public interface EventStoreSubscriptionManager extends Lifecycle {
                 log.error(msg("[{}-{}] (#{}) Skipping {} event because of error",
                               subscriberId,
                               aggregateType,
-                              e.globalEventOrder()), cause);
+                              e.globalEventOrder(),
+                              e.event().getEventTypeOrName().getValue()), cause);
             }
 
             @Override
