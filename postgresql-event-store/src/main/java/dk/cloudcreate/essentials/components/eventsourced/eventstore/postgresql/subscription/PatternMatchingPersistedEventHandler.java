@@ -84,12 +84,22 @@ public abstract class PatternMatchingPersistedEventHandler implements PersistedE
 
     public void handle(PersistedEvent event) {
         invoker.invoke(event, unmatchedEvent -> {
-            throw new IllegalArgumentException(msg("Unmatched PersistedEvent with eventId: {}, globalOrder: {}, eventType: {}, aggregateId: {}, eventOrder: {}",
-                                                   event.eventId(),
-                                                   event.globalEventOrder(),
-                                                   event.event().getEventTypeOrName().getValue(),
-                                                   event.aggregateId(),
-                                                   event.eventOrder()));
+            handleUnmatchedEvent(event);
         });
+    }
+
+    /**
+     * Override this method to provide custom handling for events that aren't matched<br>
+     * Default behaviour is to throw an {@link IllegalArgumentException}
+     *
+     * @param event the unmatched event
+     */
+    protected void handleUnmatchedEvent(PersistedEvent event) {
+        throw new IllegalArgumentException(msg("Unmatched PersistedEvent with eventId: {}, globalOrder: {}, eventType: {}, aggregateId: {}, eventOrder: {}",
+                                               event.eventId(),
+                                               event.globalEventOrder(),
+                                               event.event().getEventTypeOrName().getValue(),
+                                               event.aggregateId(),
+                                               event.eventOrder()));
     }
 }
