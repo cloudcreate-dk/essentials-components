@@ -23,4 +23,17 @@
         <packageUrl regex="true">^pkg:maven/junit/junit@.*$</packageUrl>
         <cpe>cpe:/a:junit:junit4</cpe>
     </suppress>
+    <!--
+    This issue resurfaced as the CVE-2016-1000027 was updated: https://nvd.nist.gov/vuln/detail/CVE-2016-1000027#VulnChangeHistorySection to include all versions up to 6.0.0 (excluded)
+    A Spring developer had the following comment in https://github.com/spring-projects/spring-framework/issues/24434#issuecomment-1132113566 :
+    "There never was a vulnerability per se" and "No fix was applied, since there was nothing to fix in the first place". Based on this we've added CVE-2016-1000027 to the suppression list.
+    Furthermore, all spring dependencies defined by this project are either with scope "provided" or "test", meaning that all projects that depend on Essentials or Essential Components
+    have to choose which explicit version of Spring Framework they want to use -->
+    <suppress>
+        <notes><![CDATA[
+   file name: spring-*-5.3.20.jar
+   ]]></notes>
+        <packageUrl regex="true">^pkg:maven/org\.springframework/spring*.*$</packageUrl>
+        <cve>CVE-2016-1000027</cve>
+    </suppress>
 </suppressions>

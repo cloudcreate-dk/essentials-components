@@ -594,6 +594,44 @@ var productsSubscription = eventStoreSubscriptionManager.exclusivelySubscribeToA
         });
 ```
 
+You can also use Event Pattern matching, using the `PatternMatchingPersistedEventHandler` to automatically call methods annotated with the `@SubscriptionEventHandler` annotation, 
+where the first argument matches the Event type (contained in the `PersistedEvent#event()`).  
+If the `PersistedEvent#event()` contains a **typed/class based Event** then it matches on the first argument/parameter of the method.  
+If the `PersistedEvent#event()` contains a **named Event**, then it matches on a method that accepts a String argument.  
+Each method may also include a 2nd argument that is of type `PersistedEvent` in which case the event that's being matched is included in the call to the method.    
+The methods can have any accessibility (private, public, etc.), they just have to be instance methods.  
+
+```
+public class MyEventHandler extends PatternMatchingPersistedEventHandler {
+
+        @Override
+        public void onResetFrom(GlobalEventOrder globalEventOrder) {
+
+        }
+
+        @SubscriptionEventHandler
+        public void handle(OrderEvent.OrderAdded orderAdded) {
+            ...
+        }
+
+        @SubscriptionEventHandler
+        private void handle(OrderEvent.ProductAddedToOrder productAddedToOrder) {
+          ...
+        }
+       
+        @SubscriptionEventHandler
+        private void handle(OrderEvent.ProductRemovedFromOrder productRemovedFromOrder, PersistedEvent productRemovedFromOrderPersistedEvent) {
+          ...
+        }
+
+        @SubscriptionEventHandler
+        private void handle(String json, PersistedEvent jsonPersistedEvent) {
+          ...
+        }
+
+}
+```
+
 To use `Postgresql Event Store` just add the following Maven dependency:
 
 ```
