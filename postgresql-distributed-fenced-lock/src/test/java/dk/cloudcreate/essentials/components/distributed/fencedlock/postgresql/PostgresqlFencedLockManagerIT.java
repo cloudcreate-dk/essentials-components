@@ -266,16 +266,18 @@ class PostgresqlFencedLockManagerIT {
         assertThat(lockNode2Callback.lockReleased).isNull();
 
         // And lock confirmation increases the lock token
+        var lastLockConfirmedTimestamp = lockManagerNode1.lookupLock(lockName).get().getLockLastConfirmedTimestamp();
         Awaitility.waitAtMost(Duration.ofSeconds(2))
                   .untilAsserted(() -> {
                       var lock = lockManagerNode1.lookupLock(lockName);
                       assertThat(lock).isPresent();
-                      assertThat(lock.get().getCurrentToken()).isGreaterThanOrEqualTo(FIRST_TOKEN + 1L);
+                      assertThat(lock.get().getCurrentToken()).isEqualTo(FIRST_TOKEN);
+                      assertThat(lock.get().getLockLastConfirmedTimestamp()).isAfter(lastLockConfirmedTimestamp);
                   });
         // And both Lock Managers can see this changed lock state
         var lock = lockManagerNode2.lookupLock(lockName);
         assertThat(lock).isPresent();
-        assertThat(lock.get().getCurrentToken()).isGreaterThanOrEqualTo(FIRST_TOKEN + 1L);
+        assertThat(lock.get().getLockLastConfirmedTimestamp()).isAfter(lastLockConfirmedTimestamp);
 
         // When
         lockNode1Callback.lockAcquired.release();
@@ -295,6 +297,7 @@ class PostgresqlFencedLockManagerIT {
         assertThat(lockNode2Callback.lockAcquired.isLocked()).isTrue();
         assertThat((CharSequence) lockNode2Callback.lockAcquired.getName()).isEqualTo(lockName);
         assertThat(lockNode2Callback.lockAcquired.getCurrentToken()).isEqualTo(lockNode1Callback.lockReleased.getCurrentToken() + 1L);
+        assertThat(lockNode2Callback.lockAcquired.getLockAcquiredTimestamp()).isAfter(lastLockConfirmedTimestamp);
         assertThat(lockNode2Callback.lockAcquired.isLockedByThisLockManagerInstance()).isTrue();
 
         assertThat(lockManagerNode1.isLockedByThisLockManagerInstance(lockName)).isFalse();
@@ -338,7 +341,7 @@ class PostgresqlFencedLockManagerIT {
         assertThat(lockNode1Callback.lockReleased).isNull();
         assertThat(lockNode1Callback.lockAcquired.isLocked());
         assertThat((CharSequence) lockNode1Callback.lockAcquired.getName()).isEqualTo(lockName);
-        assertThat(lockNode1Callback.lockAcquired.getCurrentToken()).isGreaterThanOrEqualTo(FIRST_TOKEN);
+        assertThat(lockNode1Callback.lockAcquired.getCurrentToken()).isEqualTo(FIRST_TOKEN);
         assertThat(lockNode1Callback.lockAcquired.isLockedByThisLockManagerInstance());
 
         // Node 2 must not be able to acquire the same lock
