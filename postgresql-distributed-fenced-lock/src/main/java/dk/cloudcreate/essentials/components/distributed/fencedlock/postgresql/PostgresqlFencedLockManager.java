@@ -64,8 +64,8 @@ public class PostgresqlFencedLockManager implements FencedLockManager {
         this(jdbi,
              Optional.empty(),
              Optional.empty(),
-             Duration.ofSeconds(5),
-             Duration.ofSeconds(3));
+             lockTimeOut,
+             lockConfirmationInterval);
     }
 
     /**

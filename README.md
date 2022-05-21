@@ -501,6 +501,7 @@ eventStore.unitOfWorkFactory().usingUnitOfWork(unitOfWork -> {
 });
 ```
 
+## Fetching Events from an AggregateType's EventStream
 Example fetching an `AggregateEventStream` for the `"Orders"` `AggregateType` with **aggregateId** specified by the `orderId` variable:
 ```
 var orders = AggregateType.of("Order");
@@ -551,13 +552,6 @@ Using asynchronous event subscription the `EventStoreSubscriptionManager` will k
   cluster can subscribe.
 - `subscribeToAggregateEventsAsynchronously` - same as above, just without using the `FencedLockManager` to coordinate subscribers in a cluster
 
-### Subscribe synchronously
-
-Synchronous subscription allows you to receive and react to Events published within the active Transaction/`UnitOfWork` that's involved in `appending` the events to the `EventStream`
-This can be useful for certain transactional views/projections where you require transactional consistency (e.g. assigning a sequential customer number, etc.):
-
-- `subscribeToAggregateEventsInTransaction`
-
 Example using `exclusivelySubscribeToAggregateEventsAsynchronously`:
 
 ```
@@ -594,11 +588,16 @@ var productsSubscription = eventStoreSubscriptionManager.exclusivelySubscribeToA
         });
 ```
 
-You can also use Event Pattern matching, using the `PatternMatchingPersistedEventHandler` to automatically call methods annotated with the `@SubscriptionEventHandler` annotation, 
-where the first argument matches the Event type (contained in the `PersistedEvent#event()`).  
-If the `PersistedEvent#event()` contains a **typed/class based Event** then it matches on the first argument/parameter of the method.  
-If the `PersistedEvent#event()` contains a **named Event**, then it matches on a method that accepts a String argument.  
-Each method may also include a 2nd argument that is of type `PersistedEvent` in which case the event that's being matched is included in the call to the method.    
+When using 
+- `EventStoreSubscriptionManager#exclusivelySubscribeToAggregateEventsAsynchronously(SubscriberId, AggregateType, GlobalEventOrder, Optional, PersistedEventHandler)`
+- `EventStoreSubscriptionManager#subscribeToAggregateEventsAsynchronously(SubscriberId, AggregateType, GlobalEventOrder, Optional, PersistedEventHandler)`
+
+then you can also use Event Pattern matching, using the `PatternMatchingPersistedEventHandler` to automatically call methods annotated with the `@SubscriptionEventHandler`
+annotation and where the 1st argument matches the actual Event type (contained in the `PersistedEvent#event()`) provided to the `PersistedEventHandler#handle(PersistedEvent)` method:    
+- If the `PersistedEvent#event()` contains a **typed/class based Event** then it matches on the 1st argument/parameter of the `@SubscriptionEventHandler` annotated method.  
+- If the `PersistedEvent#event()` contains a **named Event**, then it matches on a `@SubscriptionEventHandle` annotated method that accepts a `String` as 1st argument.    
+
+Each method may also include a 2nd argument that of type `PersistedEvent` in which case the event that's being matched is included as the 2nd argument in the call to the method.        
 The methods can have any accessibility (private, public, etc.), they just have to be instance methods.  
 
 ```
@@ -629,6 +628,76 @@ public class MyEventHandler extends PatternMatchingPersistedEventHandler {
           ...
         }
 
+}
+```
+
+### Subscribe synchronously
+
+Synchronous subscription allows you to receive and react to Events published within the active Transaction/`UnitOfWork` that's involved in `appending` the events to the `EventStream`
+This can be useful for certain transactional views/projections where you require transactional consistency (e.g. assigning a sequential customer number, etc.):
+
+- `subscribeToAggregateEventsInTransaction`
+
+```
+var eventStoreSubscriptionManager = EventStoreSubscriptionManager.createFor(eventStore,
+                                                                             50,
+                                                                             Duration.ofMillis(100),
+                                                                             new PostgresqlFencedLockManager(jdbi,
+                                                                                                             Duration.ofSeconds(3),
+                                                                                                             Duration.ofSeconds(1)),
+                                                                             Duration.ofSeconds(1),
+                                                                             new PostgresqlDurableSubscriptionRepository(jdbi));
+eventStoreSubscriptionManager.start();
+
+var productsSubscription = eventStoreSubscriptionManager.subscribeToAggregateEventsInTransaction(
+        SubscriberId.of("ProductSubscriber"),
+        AggregateType.of("Products"),
+        Optional.empty(),
+        new TransactionalPersistedEventHandler() {
+            @Override
+            public void handle(PersistedEvent event, UnitOfWork unitOfWork) {
+               ...
+            }
+        });
+```
+
+When using
+- `EventStoreSubscriptionManager#subscribeToAggregateEventsInTransaction(SubscriberId, AggregateType, Optional, TransactionalPersistedEventHandler)`
+
+then you can also use Event Pattern matching, using the pattern matching `TransactionalPersistedEventHandler`.  
+The `PatternMatchingTransactionalPersistedEventHandler` will automatically call methods annotated with the `@SubscriptionEventHandler` annotation and
+where the 1st argument matches the actual Event type (contained in the `PersistedEvent#event()` provided to the `PersistedEventHandler#handle(PersistedEvent)` method
+and where the 2nd argument is a `UnitOfWork`:
+
+- If the `PersistedEvent#event()` contains a **typed/class based Event** then it matches on the 1st argument/parameter of the `@SubscriptionEventHandler` annotated method.
+- If the `PersistedEvent#event()` contains a **named Event**, then it matches on a `@SubscriptionEventHandle` annotated method that accepts a `String` as 1st argument.    
+
+Each method may also include a 3rd argument that of type `PersistedEvent` in which case the event that's being matched is included as the 3rd argument in the call to the method.  
+The methods can have any accessibility (private, public, etc.), they just have to be instance methods.
+
+Example:
+```
+public class MyEventHandler extends PatternMatchingTransactionalPersistedEventHandler {
+
+        @SubscriptionEventHandler
+        public void handle(OrderEvent.OrderAdded orderAdded, UnitOfWork unitOfWork) {
+            ...
+        }
+
+        @SubscriptionEventHandler
+        private void handle(OrderEvent.ProductAddedToOrder productAddedToOrder, UnitOfWork unitOfWork) {
+          ...
+        }
+
+        @SubscriptionEventHandler
+        private void handle(OrderEvent.ProductRemovedFromOrder productRemovedFromOrder, UnitOfWork unitOfWork, PersistedEvent productRemovedFromOrderPersistedEvent) {
+          ...
+        }
+
+        @SubscriptionEventHandler
+        private void handle(String json, UnitOfWork unitOfWork, PersistedEvent jsonPersistedEvent) {
+          ...
+        }
 }
 ```
 

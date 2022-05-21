@@ -3,7 +3,9 @@ package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.
 import dk.cloudcreate.essentials.components.common.types.SubscriberId;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.serializer.json.*;
-import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.*;
+import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction.UnitOfWork;
+import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.EventType;
+import dk.cloudcreate.essentials.shared.functional.tuple.Pair;
 import dk.cloudcreate.essentials.shared.reflection.invocation.*;
 
 import java.lang.reflect.Method;
@@ -13,67 +15,62 @@ import static dk.cloudcreate.essentials.shared.FailFast.*;
 import static dk.cloudcreate.essentials.shared.MessageFormatter.msg;
 
 /**
- * Pattern matching {@link PersistedEventHandler} for use with the {@link EventStoreSubscriptionManager}'s:
+ * Pattern matching {@link TransactionalPersistedEventHandler} for use with the {@link EventStoreSubscriptionManager}'s:
  * <ul>
- *     <li>{@link EventStoreSubscriptionManager#exclusivelySubscribeToAggregateEventsAsynchronously(SubscriberId, AggregateType, GlobalEventOrder, Optional, PersistedEventHandler)}</li>
- *     <li>{@link EventStoreSubscriptionManager#subscribeToAggregateEventsAsynchronously(SubscriberId, AggregateType, GlobalEventOrder, Optional, PersistedEventHandler)}</li>
+ *     <li>{@link EventStoreSubscriptionManager#subscribeToAggregateEventsInTransaction(SubscriberId, AggregateType, Optional, TransactionalPersistedEventHandler)}
  * </ul>
  * <br>
- * The {@link PatternMatchingPersistedEventHandler} will automatically call methods annotated with the {@literal @SubscriptionEventHandler} annotation and
- * where the 1st argument matches the actual Event type (contained in the {@link PersistedEvent#event()}) provided to the {@link PersistedEventHandler#handle(PersistedEvent)} method.:
+ * The {@link PatternMatchingTransactionalPersistedEventHandler} will automatically call methods annotated with the {@literal @SubscriptionEventHandler} annotation and
+ * where the 1st argument matches the actual Event type (contained in the {@link PersistedEvent#event()}) provided to the {@link PersistedEventHandler#handle(PersistedEvent)} method
+ * and where the 2nd argument is a {@link UnitOfWork}:
  * <ul>
- * <li>If the {@link PersistedEvent#event()} contains a <b>typed/class based Event</b> (i.e. {@link EventJSON#getEventType()} is present), then it matches on the first argument/parameter of the
+ * <li>If the {@link PersistedEvent#event()} contains a <b>typed/class based Event</b> (i.e. {@link EventJSON#getEventType()} is present), then it matches on the 1st argument/parameter of the
  * {@link SubscriptionEventHandler} annotated method.</li>
  * <li>If the {@link PersistedEvent#event()} contains a <b>named Event</b> (i.e. {@link EventJSON#getEventName()} is present, then it matches on a {@link SubscriptionEventHandler} annotated method that
- * accepts a {@link String} as first argument.</li>
+ * accepts a {@link String} as 1st argument.</li>
  * </ul>
- * Each method may also include a 2nd argument that of type {@link PersistedEvent} in which case the event that's being matched is included as the 2nd argument in the call to the method.<br>
+ * Each method may also include a 3rd argument that of type {@link PersistedEvent} in which case the event that's being matched is included as the 3rd argument in the call to the method.<br>
  * The methods can have any accessibility (private, public, etc.), they just have to be instance methods.
  *
  * Example:
  * <pre>{@code
- * public class MyEventHandler extends PatternMatchingPersistedEventHandler {
- *
- *         @Override
- *         public void onResetFrom(GlobalEventOrder globalEventOrder) {
- *
- *         }
+ * public class MyEventHandler extends PatternMatchingTransactionalPersistedEventHandler {
  *
  *         @SubscriptionEventHandler
- *         public void handle(OrderEvent.OrderAdded orderAdded) {
+ *         public void handle(OrderEvent.OrderAdded orderAdded, UnitOfWork unitOfWork) {
  *             ...
  *         }
  *
  *         @SubscriptionEventHandler
- *         private void handle(OrderEvent.ProductAddedToOrder productAddedToOrder) {
+ *         private void handle(OrderEvent.ProductAddedToOrder productAddedToOrder, UnitOfWork unitOfWork) {
  *           ...
  *         }
  *
  *         @SubscriptionEventHandler
- *         private void handle(OrderEvent.ProductRemovedFromOrder productRemovedFromOrder, PersistedEvent productRemovedFromOrderPersistedEvent) {
+ *         private void handle(OrderEvent.ProductRemovedFromOrder productRemovedFromOrder, UnitOfWork unitOfWork, PersistedEvent productRemovedFromOrderPersistedEvent) {
  *           ...
  *         }
  *
  *         @SubscriptionEventHandler
- *         private void handle(String json, PersistedEvent jsonPersistedEvent) {
+ *         private void handle(String json, UnitOfWork unitOfWork, PersistedEvent jsonPersistedEvent) {
  *           ...
  *         }
  * }
  * }</pre>
  */
-public abstract class PatternMatchingPersistedEventHandler implements PersistedEventHandler {
+public abstract class PatternMatchingTransactionalPersistedEventHandler implements TransactionalPersistedEventHandler {
     private final PatternMatchingMethodInvoker<Object> invoker;
 
-    public PatternMatchingPersistedEventHandler() {
+    public PatternMatchingTransactionalPersistedEventHandler() {
         invoker = new PatternMatchingMethodInvoker<>(this,
                                                      new PersistedEventHandlerMethodPatternMatcher(),
                                                      InvocationStrategy.InvokeMostSpecificTypeMatched);
     }
 
     @Override
-    public void handle(PersistedEvent event) {
-        invoker.invoke(event, unmatchedEvent -> {
-            handleUnmatchedEvent(event);
+    public void handle(PersistedEvent event, UnitOfWork unitOfWork) {
+        invoker.invoke(Pair.of(event, unitOfWork), unmatchedEvent -> {
+            handleUnmatchedEvent(event, unitOfWork);
         });
     }
 
@@ -81,9 +78,10 @@ public abstract class PatternMatchingPersistedEventHandler implements PersistedE
      * Override this method to provide custom handling for events that aren't matched<br>
      * Default behaviour is to throw an {@link IllegalArgumentException}
      *
-     * @param event the unmatched event
+     * @param event      the unmatched event
+     * @param unitOfWork the unit of work
      */
-    protected void handleUnmatchedEvent(PersistedEvent event) {
+    protected void handleUnmatchedEvent(PersistedEvent event, UnitOfWork unitOfWork) {
         throw new IllegalArgumentException(msg("Unmatched PersistedEvent with eventId: {}, globalOrder: {}, eventType: {}, aggregateId: {}, eventOrder: {}",
                                                event.eventId(),
                                                event.globalEventOrder(),
@@ -98,13 +96,22 @@ public abstract class PatternMatchingPersistedEventHandler implements PersistedE
         public boolean isInvokableMethod(Method method) {
             requireNonNull(method, "No candidate method supplied");
             var isCandidate = method.isAnnotationPresent(SubscriptionEventHandler.class) &&
-                    method.getParameterCount() >= 1 && method.getParameterCount() <= 2;
-            if (isCandidate && method.getParameterCount() == 2) {
-                // Check that the 2nd parameter is a PersistedEvent, otherwise it's not supported
-                return PersistedEvent.class.equals(method.getParameterTypes()[1]);
+                    method.getParameterCount() >= 2 && method.getParameterCount() <= 3;
+            if (!isCandidate) {
+                return false;
             }
-            return isCandidate;
 
+            // Check that the 2nd parameter is a UnitOfWork subtype, otherwise it's not supported
+            if (!UnitOfWork.class.isAssignableFrom(method.getParameterTypes()[1])) {
+                return false;
+            }
+
+            if (method.getParameterCount() == 3) {
+                // Check that the 3rd parameter is a PersistedEvent, otherwise it's not supported
+                return PersistedEvent.class.equals(method.getParameterTypes()[2]);
+            } else {
+                return true;
+            }
         }
 
         @Override
@@ -113,11 +120,13 @@ public abstract class PatternMatchingPersistedEventHandler implements PersistedE
             return method.getParameterTypes()[0];
         }
 
+        @SuppressWarnings("unchecked")
         @Override
         public Class<?> resolveInvocationArgumentTypeFromObject(Object argument) {
             requireNonNull(argument, "No argument supplied");
-            requireMustBeInstanceOf(argument, PersistedEvent.class);
-            var persistedEvent = (PersistedEvent) argument;
+            requireMustBeInstanceOf(argument, Pair.class);
+            var argumentPair   = (Pair<PersistedEvent, UnitOfWork>) argument;
+            var persistedEvent = argumentPair._1;
 
             if (persistedEvent.event().getEventType().isPresent()) {
                 return persistedEvent.event().getEventType()
@@ -129,14 +138,16 @@ public abstract class PatternMatchingPersistedEventHandler implements PersistedE
             }
         }
 
+        @SuppressWarnings("unchecked")
         public void invokeMethod(Method methodToInvoke, Object argument, Object invokeMethodOn, Class<?> resolvedInvokeMethodWithArgumentOfType) throws Exception {
             requireNonNull(methodToInvoke, "No methodToInvoke supplied");
             requireNonNull(argument, "No argument supplied");
-            requireMustBeInstanceOf(argument, PersistedEvent.class);
+            requireMustBeInstanceOf(argument, Pair.class);
             requireNonNull(invokeMethodOn, "No invokeMethodOn supplied");
             requireNonNull(resolvedInvokeMethodWithArgumentOfType, "No resolvedInvokeMethodWithArgumentOfType supplied");
 
-            var    persistedEvent = (PersistedEvent) argument;
+            var    argumentPair   = (Pair<PersistedEvent, UnitOfWork>) argument;
+            var    persistedEvent = argumentPair._1;
             Object firstParameter;
             if (persistedEvent.event().getEventType().isPresent()) {
                 firstParameter = persistedEvent.event()
@@ -150,10 +161,10 @@ public abstract class PatternMatchingPersistedEventHandler implements PersistedE
                 firstParameter = persistedEvent.event().getJson();
             }
 
-            if (methodToInvoke.getParameterCount() == 1) {
-                methodToInvoke.invoke(invokeMethodOn, firstParameter);
+            if (methodToInvoke.getParameterCount() == 2) {
+                methodToInvoke.invoke(invokeMethodOn, firstParameter, argumentPair._2);
             } else {
-                methodToInvoke.invoke(invokeMethodOn, firstParameter, persistedEvent);
+                methodToInvoke.invoke(invokeMethodOn, firstParameter, argumentPair._2, persistedEvent);
             }
         }
     }
