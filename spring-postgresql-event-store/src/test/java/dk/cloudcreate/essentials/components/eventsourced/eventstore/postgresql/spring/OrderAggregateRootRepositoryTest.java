@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import dk.cloudcreate.essentials.components.common.transaction.UnitOfWork;
 import dk.cloudcreate.essentials.components.common.types.*;
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.AggregateRootRepository;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.*;
@@ -15,7 +16,7 @@ import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.p
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.serializer.AggregateIdSerializer;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.spring.test_data.Order;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.spring.test_data.*;
-import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction.*;
+import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction.EventStoreUnitOfWorkFactory;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.*;
 import dk.cloudcreate.essentials.jackson.immutable.EssentialsImmutableJacksonModule;
 import dk.cloudcreate.essentials.jackson.types.EssentialTypesJacksonModule;
@@ -69,7 +70,7 @@ class OrderAggregateRootRepositoryTest {
     Jdbi jdbi;
 
     @Autowired
-    private UnitOfWorkFactory unitOfWorkFactory;
+    private EventStoreUnitOfWorkFactory unitOfWorkFactory;
 
     @Autowired
     DataSource dataSource;
@@ -101,7 +102,7 @@ class OrderAggregateRootRepositoryTest {
                                                                                        unitOfWorkFactory,
                                                                                        eventMapper);
         // Reset the event store between Test method runs
-        persistenceStrategy.resetEventStorageFor(unitOfWorkFactory, ordersEventStreamConfig);
+        persistenceStrategy.resetEventStorageFor(ordersEventStreamConfig);
 
         eventStore = new PostgresqlEventStore<>(unitOfWorkFactory,
                                                 persistenceStrategy);

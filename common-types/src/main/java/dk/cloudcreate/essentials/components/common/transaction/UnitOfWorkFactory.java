@@ -1,6 +1,5 @@
-package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction;
+package dk.cloudcreate.essentials.components.common.transaction;
 
-import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.PersistedEvent;
 import dk.cloudcreate.essentials.shared.functional.*;
 
 import java.util.Optional;
@@ -9,15 +8,16 @@ import static dk.cloudcreate.essentials.shared.FailFast.requireNonNull;
 
 /**
  * This interface creates a {@link UnitOfWork}
+ * @param <UOW> the {@link UnitOfWork} sub-type returned by the {@link UnitOfWorkFactory}
  */
-public interface UnitOfWorkFactory {
+public interface UnitOfWorkFactory<UOW extends UnitOfWork> {
     /**
      * Get a required active {@link UnitOfWork}
      *
      * @return the active {@link UnitOfWork}
      * @throws NoActiveUnitOfWorkException if the is no active {@link UnitOfWork}
      */
-    UnitOfWork getRequiredUnitOfWork();
+    UOW getRequiredUnitOfWork();
 
     /**
      * Get the current {@link UnitOfWork} or create a new {@link UnitOfWork}
@@ -25,18 +25,10 @@ public interface UnitOfWorkFactory {
      *
      * @return a {@link UnitOfWork}
      */
-    UnitOfWork getOrCreateNewUnitOfWork();
+    UOW getOrCreateNewUnitOfWork();
 
-    /**
-     * Register a {@link UnitOfWork} callback that will be called with any persisted {@link PersistedEvent}'s during the
-     * life cycle of the {@link UnitOfWork}
-     *
-     * @param callback the callback to register
-     * @return the {@link UnitOfWorkFactory} instance this method was called on
-     */
-    UnitOfWorkFactory registerPersistedEventsCommitLifeCycleCallback(PersistedEventsCommitLifecycleCallback callback);
 
-    default void usingUnitOfWork(CheckedConsumer<UnitOfWork> unitOfWorkConsumer) {
+    default void usingUnitOfWork(CheckedConsumer<UOW> unitOfWorkConsumer) {
         requireNonNull(unitOfWorkConsumer, "No unitOfWorkConsumer provided");
         var unitOfWork = getOrCreateNewUnitOfWork();
         try {
@@ -48,7 +40,7 @@ public interface UnitOfWorkFactory {
         }
     }
 
-    default <R> R withUnitOfWork(CheckedFunction<UnitOfWork, R> unitOfWorkFunction) {
+    default <R> R withUnitOfWork(CheckedFunction<UOW, R> unitOfWorkFunction) {
         requireNonNull(unitOfWorkFunction, "No unitOfWorkFunction provided");
         var unitOfWork = getOrCreateNewUnitOfWork();
         try {
@@ -61,5 +53,5 @@ public interface UnitOfWorkFactory {
         }
     }
 
-    Optional<UnitOfWork> getCurrentUnitOfWork();
+    Optional<UOW> getCurrentUnitOfWork();
 }

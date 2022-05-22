@@ -15,7 +15,7 @@ import static dk.cloudcreate.essentials.shared.MessageFormatter.msg;
 /**
  * Pattern matching {@link PersistedEventHandler} for use with the {@link EventStoreSubscriptionManager}'s:
  * <ul>
- *     <li>{@link EventStoreSubscriptionManager#exclusivelySubscribeToAggregateEventsAsynchronously(SubscriberId, AggregateType, GlobalEventOrder, Optional, PersistedEventHandler)}</li>
+ *     <li>{@link EventStoreSubscriptionManager#exclusivelySubscribeToAggregateEventsAsynchronously(SubscriberId, AggregateType, GlobalEventOrder, Optional, FencedLockAwareSubscriber, PersistedEventHandler)} </li>
  *     <li>{@link EventStoreSubscriptionManager#subscribeToAggregateEventsAsynchronously(SubscriberId, AggregateType, GlobalEventOrder, Optional, PersistedEventHandler)}</li>
  * </ul>
  * <br>

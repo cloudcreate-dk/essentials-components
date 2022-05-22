@@ -3,7 +3,7 @@ package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.
 import dk.cloudcreate.essentials.components.common.types.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.PostgresqlEventStore;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.*;
-import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction.UnitOfWork;
+import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction.EventStoreUnitOfWork;
 import dk.cloudcreate.essentials.types.LongRange;
 
 import java.util.*;
@@ -35,7 +35,7 @@ public interface AggregateEventStreamPersistenceStrategy<CONFIG extends Aggregat
      * @param persistableEvents           the list of persistable events (i.e. events that haven't yet been persisted)
      * @return the {@link PersistedEvent}'s - each one corresponds 1-1 and IN-ORDER with the <code>persistableEvents</code>
      */
-    <STREAM_ID> AggregateEventStream<STREAM_ID> persist(UnitOfWork unitOfWork, AggregateType aggregateType, STREAM_ID aggregateId, Optional<Long> appendEventsAfterEventOrder, List<?> persistableEvents);
+    <STREAM_ID> AggregateEventStream<STREAM_ID> persist(EventStoreUnitOfWork unitOfWork, AggregateType aggregateType, STREAM_ID aggregateId, Optional<Long> appendEventsAfterEventOrder, List<?> persistableEvents);
 
     /**
      * Load the last {@link PersistedEvent} in relation to the specified <code>configuration</code> and <code>aggregateId</code>
@@ -46,7 +46,7 @@ public interface AggregateEventStreamPersistenceStrategy<CONFIG extends Aggregat
      * @return an {@link Optional} with the last {@link PersistedEvent} related to the <code>aggregateId</code> instance or
      * {@link Optional#empty()} if no events have been persisted before
      */
-    <STREAM_ID> Optional<PersistedEvent> loadLastPersistedEventRelatedTo(UnitOfWork unitOfWork, AggregateType aggregateType, STREAM_ID aggregateId);
+    <STREAM_ID> Optional<PersistedEvent> loadLastPersistedEventRelatedTo(EventStoreUnitOfWork unitOfWork, AggregateType aggregateType, STREAM_ID aggregateId);
 
     /**
      * Load all events related to the given <code>configuration</code>, sharing the same <code>aggregateId</code> and having a {@link PersistedEvent#eventOrder()} within the <code>eventOrderRange</code>
@@ -59,7 +59,7 @@ public interface AggregateEventStreamPersistenceStrategy<CONFIG extends Aggregat
      *                                              the given tenant specified in this parameter OR if the Event doesn't specify ANY tenant
      * @return the {@link PersistedEvent} related to the event stream's
      */
-    <STREAM_ID> Optional<AggregateEventStream<STREAM_ID>> loadAggregateEvents(UnitOfWork unitOfWork, AggregateType aggregateType, STREAM_ID aggregateId, LongRange eventOrderRange, Optional<Tenant> onlyIncludeEventsIfTheyBelongToTenant);
+    <STREAM_ID> Optional<AggregateEventStream<STREAM_ID>> loadAggregateEvents(EventStoreUnitOfWork unitOfWork, AggregateType aggregateType, STREAM_ID aggregateId, LongRange eventOrderRange, Optional<Tenant> onlyIncludeEventsIfTheyBelongToTenant);
 
     /**
      * Load all events related to the given <code>configuration</code> and having a {@link PersistedEvent#globalEventOrder()} within the <code>globalOrderRange</code>
@@ -71,7 +71,7 @@ public interface AggregateEventStreamPersistenceStrategy<CONFIG extends Aggregat
      *                                              the given tenant specified in this parameter OR if the Event doesn't specify ANY tenant
      * @return the {@link PersistedEvent}'s
      */
-    Stream<PersistedEvent> loadEventsByGlobalOrder(UnitOfWork unitOfWork, AggregateType aggregateType, LongRange globalOrderRange, Optional<Tenant> onlyIncludeEventsIfTheyBelongToTenant);
+    Stream<PersistedEvent> loadEventsByGlobalOrder(EventStoreUnitOfWork unitOfWork, AggregateType aggregateType, LongRange globalOrderRange, Optional<Tenant> onlyIncludeEventsIfTheyBelongToTenant);
 
     /**
      * Load the event belonging to the given <code>configuration</code> and having the specified <code>eventId</code>
@@ -81,5 +81,5 @@ public interface AggregateEventStreamPersistenceStrategy<CONFIG extends Aggregat
      * @param eventId       the identifier of the {@link PersistedEvent}
      * @return an {@link Optional} with the {@link PersistedEvent} or {@link Optional#empty()} if the event couldn't be found
      */
-    Optional<PersistedEvent> loadEvent(UnitOfWork unitOfWork, AggregateType aggregateType, EventId eventId);
+    Optional<PersistedEvent> loadEvent(EventStoreUnitOfWork unitOfWork, AggregateType aggregateType, EventId eventId);
 }

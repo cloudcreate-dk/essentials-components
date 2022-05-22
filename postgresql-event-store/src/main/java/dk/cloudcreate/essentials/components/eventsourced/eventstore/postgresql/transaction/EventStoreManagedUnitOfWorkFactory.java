@@ -1,8 +1,8 @@
 package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction;
 
+import dk.cloudcreate.essentials.components.common.transaction.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.EventStore;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.PersistedEvent;
-import dk.cloudcreate.essentials.shared.functional.*;
 import org.jdbi.v3.core.*;
 import org.slf4j.*;
 
@@ -18,7 +18,7 @@ import static dk.cloudcreate.essentials.shared.MessageFormatter.msg;
  * existing <b>Spring</b> Managed transaction then please use the Spring specific {@link UnitOfWorkFactory},
  * <code>SpringManagedUnitOfWorkFactory</code>, provided with the <b>spring-postgresql-event-store</b> module.
  */
-public class EventStoreManagedUnitOfWorkFactory implements UnitOfWorkFactory {
+public  class EventStoreManagedUnitOfWorkFactory implements EventStoreUnitOfWorkFactory {
     private static final Logger log = LoggerFactory.getLogger(EventStoreManagedUnitOfWorkFactory.class);
 
     private final Jdbi                                         jdbi;
@@ -27,7 +27,7 @@ public class EventStoreManagedUnitOfWorkFactory implements UnitOfWorkFactory {
     /**
      * Contains the currently active {@link UnitOfWork}
      */
-    private final ThreadLocal<EventStoreManagedUnitOfWork> unitOfWorks = new ThreadLocal();
+    private final ThreadLocal<EventStoreManagedUnitOfWork> unitOfWorks = new ThreadLocal<>();
 
     public EventStoreManagedUnitOfWorkFactory(Jdbi jdbi) {
         this.jdbi = requireNonNull(jdbi, "No jdbi instance provided");
@@ -35,7 +35,7 @@ public class EventStoreManagedUnitOfWorkFactory implements UnitOfWorkFactory {
     }
 
     @Override
-    public UnitOfWork getRequiredUnitOfWork() {
+    public EventStoreUnitOfWork getRequiredUnitOfWork() {
         var unitOfWork = unitOfWorks.get();
         if (unitOfWork == null) {
             throw new NoActiveUnitOfWorkException();
@@ -44,7 +44,7 @@ public class EventStoreManagedUnitOfWorkFactory implements UnitOfWorkFactory {
     }
 
     @Override
-    public UnitOfWork getOrCreateNewUnitOfWork() {
+    public EventStoreUnitOfWork getOrCreateNewUnitOfWork() {
         var unitOfWork = unitOfWorks.get();
         if (unitOfWork == null) {
             log.debug("Creating EventStore Managed UnitOfWork");
@@ -56,7 +56,7 @@ public class EventStoreManagedUnitOfWorkFactory implements UnitOfWorkFactory {
     }
 
     @Override
-    public UnitOfWorkFactory registerPersistedEventsCommitLifeCycleCallback(PersistedEventsCommitLifecycleCallback callback) {
+    public EventStoreUnitOfWorkFactory registerPersistedEventsCommitLifeCycleCallback(PersistedEventsCommitLifecycleCallback callback) {
         lifecycleCallbacks.add(requireNonNull(callback, "No callback provided"));
         return this;
     }
@@ -67,7 +67,7 @@ public class EventStoreManagedUnitOfWorkFactory implements UnitOfWorkFactory {
     }
 
     @Override
-    public Optional<UnitOfWork> getCurrentUnitOfWork() {
+    public Optional<EventStoreUnitOfWork> getCurrentUnitOfWork() {
         return Optional.ofNullable(unitOfWorks.get());
     }
 
@@ -75,9 +75,9 @@ public class EventStoreManagedUnitOfWorkFactory implements UnitOfWorkFactory {
         private final Logger log = LoggerFactory.getLogger(EventStoreManagedUnitOfWork.class);
 
         private Map<UnitOfWorkLifecycleCallback<Object>, List<Object>> unitOfWorkLifecycleCallbackResources;
-        private List<PersistedEvent>                                   eventsPersisted;
-        private UnitOfWorkStatus                                       status;
-        private Exception                                              causeOfRollback;
+        private List<PersistedEvent> eventsPersisted;
+        private UnitOfWorkStatus     status;
+        private Exception            causeOfRollback;
         private Handle                                                 handle;
 
         public EventStoreManagedUnitOfWork() {

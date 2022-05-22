@@ -1,6 +1,4 @@
-package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction;
-
-import org.jdbi.v3.core.Handle;
+package dk.cloudcreate.essentials.components.common.transaction;
 
 public interface UnitOfWork {
     /**
@@ -24,13 +22,6 @@ public interface UnitOfWork {
      * Get the status of the {@link UnitOfWork}
      */
     UnitOfWorkStatus status();
-
-    /**
-     * Get the {@link org.jdbi.v3.core.Jdbi} handle<br>
-     * @return the {@link org.jdbi.v3.core.Jdbi} handle
-     * @throws UnitOfWorkException If the transaction isn't active
-     */
-    Handle handle();
 
     /**
      * The cause of a Rollback or a {@link #markAsRollbackOnly(Exception)}

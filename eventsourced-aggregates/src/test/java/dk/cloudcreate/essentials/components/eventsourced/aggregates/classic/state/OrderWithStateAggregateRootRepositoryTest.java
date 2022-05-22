@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import dk.cloudcreate.essentials.components.common.transaction.UnitOfWork;
 import dk.cloudcreate.essentials.components.common.types.*;
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.*;
@@ -40,7 +41,7 @@ class OrderWithStateAggregateRootRepositoryTest {
 
     private Jdbi                                                             jdbi;
     private AggregateType                                                    aggregateType;
-    private UnitOfWorkFactory                                                unitOfWorkFactory;
+    private EventStoreUnitOfWorkFactory                                      unitOfWorkFactory;
     private TestPersistableEventMapper                                       eventMapper;
     private PostgresqlEventStore<SeparateTablePerAggregateTypeConfiguration> eventStore;
 

@@ -1,5 +1,6 @@
 package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.spring;
 
+import dk.cloudcreate.essentials.components.common.transaction.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.EventStore;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.PersistedEvent;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction.*;
@@ -17,7 +18,7 @@ import static dk.cloudcreate.essentials.shared.MessageFormatter.msg;
  * {@link UnitOfWorkFactory} variant where the have the {@link EventStore} {@link UnitOfWork}'s underlying
  * transaction is managed by Spring
  */
-public class SpringManagedUnitOfWorkFactory implements UnitOfWorkFactory {
+public class SpringManagedUnitOfWorkFactory implements EventStoreUnitOfWorkFactory {
     private static final Logger log = LoggerFactory.getLogger(SpringManagedUnitOfWorkFactory.class);
 
     private final Jdbi                                         jdbi;
@@ -35,7 +36,7 @@ public class SpringManagedUnitOfWorkFactory implements UnitOfWorkFactory {
     }
 
     @Override
-    public UnitOfWork getRequiredUnitOfWork() {
+    public EventStoreUnitOfWork getRequiredUnitOfWork() {
         if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new NoActiveUnitOfWorkException();
         }
@@ -43,7 +44,7 @@ public class SpringManagedUnitOfWorkFactory implements UnitOfWorkFactory {
     }
 
     @Override
-    public UnitOfWork getOrCreateNewUnitOfWork() {
+    public EventStoreUnitOfWork getOrCreateNewUnitOfWork() {
         SpringManagedUnitOfWork unitOfWork;
         if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             log.debug("Manually starting a new Spring Managed Transaction and associating it with a new UnitOfWork");
@@ -68,13 +69,13 @@ public class SpringManagedUnitOfWorkFactory implements UnitOfWorkFactory {
     }
 
     @Override
-    public UnitOfWorkFactory registerPersistedEventsCommitLifeCycleCallback(PersistedEventsCommitLifecycleCallback callback) {
+    public EventStoreUnitOfWorkFactory registerPersistedEventsCommitLifeCycleCallback(PersistedEventsCommitLifecycleCallback callback) {
         lifecycleCallbacks.add(requireNonNull(callback, "No callback provided"));
         return this;
     }
 
     @Override
-    public Optional<UnitOfWork> getCurrentUnitOfWork() {
+    public Optional<EventStoreUnitOfWork> getCurrentUnitOfWork() {
         return Optional.ofNullable((SpringManagedUnitOfWork) TransactionSynchronizationManager.getResource(SpringManagedUnitOfWork.class));
     }
 

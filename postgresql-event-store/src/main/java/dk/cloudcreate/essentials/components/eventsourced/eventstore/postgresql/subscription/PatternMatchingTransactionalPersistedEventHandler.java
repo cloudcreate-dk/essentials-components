@@ -1,9 +1,9 @@
 package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.subscription;
 
+import dk.cloudcreate.essentials.components.common.transaction.UnitOfWork;
 import dk.cloudcreate.essentials.components.common.types.SubscriberId;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.serializer.json.*;
-import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction.UnitOfWork;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.EventType;
 import dk.cloudcreate.essentials.shared.functional.tuple.Pair;
 import dk.cloudcreate.essentials.shared.reflection.invocation.*;

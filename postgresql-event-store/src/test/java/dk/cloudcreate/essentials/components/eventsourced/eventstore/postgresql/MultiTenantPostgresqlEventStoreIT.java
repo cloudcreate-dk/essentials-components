@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import dk.cloudcreate.essentials.components.common.transaction.UnitOfWork;
 import dk.cloudcreate.essentials.components.common.types.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.bus.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.*;
@@ -12,7 +13,7 @@ import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.p
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.persistence.table_per_aggregate_type.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.serializer.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.test_data.*;
-import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction.*;
+import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction.EventStoreManagedUnitOfWorkFactory;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.*;
 import dk.cloudcreate.essentials.jackson.immutable.EssentialsImmutableJacksonModule;
 import dk.cloudcreate.essentials.jackson.types.EssentialTypesJacksonModule;

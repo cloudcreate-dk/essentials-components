@@ -1,11 +1,9 @@
-package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction;
-
-import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.*;
+package dk.cloudcreate.essentials.components.common.transaction;
 
 /**
- * Represents an Exception that occurred in the {@link EventStore} in relation to a {@link UnitOfWork}
+ * Represents an Exception that occurred in relation to a {@link UnitOfWork}
  */
-public class UnitOfWorkException extends EventStoreException {
+public class UnitOfWorkException extends RuntimeException {
     public UnitOfWorkException() {
     }
 

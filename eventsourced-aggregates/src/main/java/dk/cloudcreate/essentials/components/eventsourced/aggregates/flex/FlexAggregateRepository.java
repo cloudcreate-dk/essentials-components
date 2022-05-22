@@ -1,9 +1,9 @@
 package dk.cloudcreate.essentials.components.eventsourced.aggregates.flex;
 
+import dk.cloudcreate.essentials.components.common.transaction.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.persistence.AggregateTypeConfiguration;
-import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.EventOrder;
 import dk.cloudcreate.essentials.shared.reflection.Reflector;
 import dk.cloudcreate.essentials.types.LongRange;

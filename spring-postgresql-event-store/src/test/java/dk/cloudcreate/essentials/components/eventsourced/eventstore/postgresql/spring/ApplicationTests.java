@@ -16,7 +16,7 @@
 
 package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.spring;
 
-import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction.UnitOfWorkFactory;
+import dk.cloudcreate.essentials.components.common.transaction.UnitOfWorkFactory;
 import dk.cloudcreate.essentials.jackson.types.EssentialTypesJacksonModule;
 import org.jdbi.v3.core.Jdbi;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

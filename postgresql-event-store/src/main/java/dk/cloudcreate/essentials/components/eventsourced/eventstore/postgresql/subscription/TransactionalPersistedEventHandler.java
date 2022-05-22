@@ -1,8 +1,8 @@
 package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.subscription;
 
+import dk.cloudcreate.essentials.components.common.transaction.UnitOfWork;
 import dk.cloudcreate.essentials.components.common.types.SubscriberId;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.*;
-import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction.UnitOfWork;
 
 import java.util.Optional;
 

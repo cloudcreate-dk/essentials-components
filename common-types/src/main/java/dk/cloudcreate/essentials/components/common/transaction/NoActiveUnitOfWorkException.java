@@ -1,8 +1,6 @@
-package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction;
+package dk.cloudcreate.essentials.components.common.transaction;
 
-import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.EventStoreException;
-
-public class NoActiveUnitOfWorkException extends EventStoreException {
+public class NoActiveUnitOfWorkException extends UnitOfWorkException {
     public NoActiveUnitOfWorkException() {
     }
 
