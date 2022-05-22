@@ -573,6 +573,15 @@ var productsSubscription = eventStoreSubscriptionManager.exclusivelySubscribeToA
                                                    // All subsequent subscriptions for the same subscriber, the EventStoreSubscriptionManager
                                                    // keeps track of the Resume Point using the PostgresqlDurableSubscriptionRepository
         Optional.empty(),
+        new FencedLockAwareSubscriber() {
+            @Override
+            public void onLockAcquired(FencedLock fencedLock, SubscriptionResumePoint resumeFromAndIncluding) {
+            }
+
+            @Override
+            public void onLockReleased(FencedLock fencedLock) {
+            }
+        },
         new PersistedEventHandler() {
             @Override
             public void onResetFrom(GlobalEventOrder globalEventOrder) {
@@ -737,7 +746,7 @@ class Application {
     }
     
     @Bean
-    public UnitOfWorkFactory unitOfWorkFactory(Jdbi jdbi, PlatformTransactionManager transactionManager) {
+    public EventStoreUnitOfWorkFactory unitOfWorkFactory(Jdbi jdbi, PlatformTransactionManager transactionManager) {
         return new SpringManagedUnitOfWorkFactory(jdbi, transactionManager);
     }
 }
@@ -767,7 +776,7 @@ eventStore.addAggregateTypeConfiguration(
                                                   
 ```
 
-You can still use the UnitOfWorkFactory to start and commit Spring transactions, or you can use the `TransactionTemplate` class or `@Transactional` annotation to start and commit transactions.
+You can still use the `UnitOfWorkFactory` to start and commit Spring transactions, or you can use the `TransactionTemplate` class or `@Transactional` annotation to start and commit transactions.
 
 No matter how a transaction then you can always acquire the active `UnitOfWork` using
 
