@@ -3,7 +3,7 @@ package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.
 import dk.cloudcreate.essentials.components.common.transaction.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.PersistedEvent;
 
-public interface EventStoreUnitOfWorkFactory extends UnitOfWorkFactory<EventStoreUnitOfWork> {
+public interface EventStoreUnitOfWorkFactory extends HandleAwareUnitOfWorkFactory<EventStoreUnitOfWork> {
     /**
      * Register a {@link UnitOfWork} callback that will be called with any persisted {@link PersistedEvent}'s during the
      * life cycle of the {@link UnitOfWork}
