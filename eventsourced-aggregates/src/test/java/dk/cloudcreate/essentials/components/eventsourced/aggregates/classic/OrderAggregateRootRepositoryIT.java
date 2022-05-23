@@ -130,7 +130,7 @@ class OrderAggregateRootRepositoryIT {
         assertThat(order.uncommittedChanges().size()).isEqualTo(0);
         assertThat(recordingLocalEventBusConsumer.beforeCommitPersistedEvents.size()).isEqualTo(2);
         assertThat(recordingLocalEventBusConsumer.afterCommitPersistedEvents.size()).isEqualTo(2);
-        Awaitility.waitAtMost(Duration.ofMillis(300))
+        Awaitility.waitAtMost(Duration.ofMillis(2000))
                   .untilAsserted(() -> assertThat(asynchronousOrderEventsReceived.size()).isEqualTo(2));
 
         // And The events received are the same
@@ -201,7 +201,7 @@ class OrderAggregateRootRepositoryIT {
             ordersRepository.persist(order);
         });
 
-        Awaitility.waitAtMost(Duration.ofMillis(300))
+        Awaitility.waitAtMost(Duration.ofMillis(2000))
                   .untilAsserted(() -> assertThat(asynchronousOrderEventsReceived.size()).isEqualTo(2));
         asynchronousOrderEventsReceived.clear();
         recordingLocalEventBusConsumer.clear();
@@ -230,7 +230,7 @@ class OrderAggregateRootRepositoryIT {
         assertThat(changedOrder.uncommittedChanges().size()).isEqualTo(0);
         assertThat(recordingLocalEventBusConsumer.beforeCommitPersistedEvents.size()).isEqualTo(1);
         assertThat(recordingLocalEventBusConsumer.afterCommitPersistedEvents.size()).isEqualTo(1);
-        Awaitility.waitAtMost(Duration.ofMillis(300))
+        Awaitility.waitAtMost(Duration.ofMillis(2000))
                   .untilAsserted(() -> assertThat(asynchronousOrderEventsReceived.size()).isEqualTo(1));
 
         // And The events received are the same

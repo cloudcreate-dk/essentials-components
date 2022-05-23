@@ -131,7 +131,7 @@ public class FlexAggregateRepositoryIT {
         assertThat(recordingLocalEventBusConsumer.afterCommitPersistedEvents.get(1).aggregateId()).isEqualTo(orderId);
         assertThat(recordingLocalEventBusConsumer.afterCommitPersistedEvents.get(1).event().getEventTypeOrName().getValue()).isEqualTo(Order.ProductAddedToOrder.class.getName());
 
-        Awaitility.waitAtMost(Duration.ofMillis(300))
+        Awaitility.waitAtMost(Duration.ofMillis(2000))
                   .untilAsserted(() -> assertThat(asynchronousOrderEventsReceived.size()).isEqualTo(2));
 
         // And The events received are the same
