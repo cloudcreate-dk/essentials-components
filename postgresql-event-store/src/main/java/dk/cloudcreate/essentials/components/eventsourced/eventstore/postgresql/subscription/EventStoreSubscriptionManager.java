@@ -14,7 +14,6 @@ import dk.cloudcreate.essentials.shared.concurrent.ThreadFactoryBuilder;
 import dk.cloudcreate.essentials.shared.functional.tuple.Pair;
 import org.slf4j.*;
 import reactor.core.Disposable;
-import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -780,7 +779,6 @@ public interface EventStoreSubscriptionManager extends Lifecycle {
                                                                  Optional.of(eventStorePollingInterval),
                                                                  onlyIncludeEventsForTenant,
                                                                  Optional.of(subscriberId))
-                                                     .publishOn(Schedulers.newSingle("Publish-" + subscriberId + "-" + aggregateType, true))
                                                      .subscribe(e -> {
                                                          log.trace("[{}-{}] (#{}) Received {} event with eventId '{}', aggregateId: '{}', eventOrder: {}",
                                                                    subscriberId,

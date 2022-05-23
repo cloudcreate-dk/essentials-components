@@ -35,7 +35,10 @@ This library focuses on providing different flavours of Event Source Aggregates 
 The `EventStore` is very flexible and doesn't specify any specific design requirements for an Aggregate or its Events, except that that have to be associated with an `AggregateType` (see the
 `AggregateType` sub section or the `EventStore` section for more information).
 
-This library supports multiple flavours of Aggregate design such as the `AggregateRoot`, `AggregateRootWithState` and the `FlexAggregate`.
+This library supports multiple flavours of Aggregate design such as the `AggregateRoot`, `AggregateRootWithState` and the `FlexAggregate`.  
+
+For an example of the `FlexAggregate`, which features a functional immutable Aggregate design, check the `Order` and `FlexAggregateRepositoryIT` in 
+`essentials-components/eventsourced-aggregates/src/test/java/dk/cloudcreate/essentials/components/eventsourced/aggregates/flex`
 
 #### Order aggregate with separate state object
 
