@@ -12,6 +12,7 @@ import dk.cloudcreate.essentials.types.LongRange;
 import org.jdbi.v3.core.ConnectionException;
 import org.slf4j.*;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.*;
@@ -235,61 +236,62 @@ public class PostgresqlEventStore<CONFIG extends AggregateTypeConfiguration> imp
                                   batchFetchSize);
         final AtomicLong nextFromInclusiveGlobalOrder = new AtomicLong(fromInclusiveGlobalOrder);
         var persistedEventsFlux = Flux.defer(() -> {
-            UnitOfWork unitOfWork;
-            try {
-                unitOfWork = unitOfWorkFactory.getOrCreateNewUnitOfWork();
-            } catch (ConnectionException e) {
-                eventStoreStreamLog.debug(msg("[{}] Experienced a Postgresql Connection issue, will return an empty Flux",
-                                              eventStreamLogName), e);
-                return Flux.empty();
-            }
+                                          UnitOfWork unitOfWork;
+                                          try {
+                                              unitOfWork = unitOfWorkFactory.getOrCreateNewUnitOfWork();
+                                          } catch (ConnectionException e) {
+                                              eventStoreStreamLog.debug(msg("[{}] Experienced a Postgresql Connection issue, will return an empty Flux",
+                                                                            eventStreamLogName), e);
+                                              return Flux.empty();
+                                          }
 
-            try {
-                var persistedEvents = loadEventsByGlobalOrder(aggregateType, LongRange.from(nextFromInclusiveGlobalOrder.get(), batchFetchSize), onlyIncludeEventIfItBelongsToTenant).collect(Collectors.toList());
-                unitOfWork.rollback();
-                if (persistedEvents.size() > 0) {
-                    eventStoreStreamLog.debug("[{}] loadEventsByGlobalOrder using fromInclusiveGlobalOrder {} returned {} events",
-                                              eventStreamLogName,
-                                              nextFromInclusiveGlobalOrder.get(),
-                                              persistedEvents.size());
-                } else {
-                    eventStoreStreamLog.trace("[{}] loadEventsByGlobalOrder using fromInclusiveGlobalOrder {} returned no events",
-                                              eventStreamLogName,
-                                              nextFromInclusiveGlobalOrder.get());
-                }
-                return Flux.fromIterable(persistedEvents);
-            } catch (RuntimeException e) {
-                log.error(msg("[{}] Polling failed", eventStreamLogName), e);
-                if (unitOfWork != null) {
-                    try {
-                        unitOfWork.rollback(e);
-                    } catch (Exception rollbackException) {
-                        log.error(msg("[{}] Failed to rollback unit of work", eventStreamLogName), rollbackException);
-                    }
-                }
-                eventStoreStreamLog.error(msg("[{}] Returning Error for '{}' EventStream with nextFromInclusiveGlobalOrder {}",
-                                              eventStreamLogName,
-                                              aggregateType,
-                                              nextFromInclusiveGlobalOrder.get()),
-                                          e);
-                return Flux.error(e);
-            }
-        }).doOnNext(event -> {
-            final long nextGlobalOrder = event.globalEventOrder().longValue() + 1L;
-            eventStoreStreamLog.trace("[{}] Updating nextFromInclusiveGlobalOrder from {} to {}",
-                                      eventStreamLogName,
-                                      nextFromInclusiveGlobalOrder.get(),
-                                      nextGlobalOrder);
-            nextFromInclusiveGlobalOrder.set(nextGlobalOrder);
-        }).doOnError(throwable -> {
-            eventStoreStreamLog.error(msg("[{}] Failed {}",
-                                          eventStreamLogName,
-                                          throwable.getMessage()),
-                                      throwable);
-        });
+                                          try {
+                                              var persistedEvents = loadEventsByGlobalOrder(aggregateType, LongRange.from(nextFromInclusiveGlobalOrder.get(), batchFetchSize), onlyIncludeEventIfItBelongsToTenant).collect(Collectors.toList());
+                                              unitOfWork.rollback();
+                                              if (persistedEvents.size() > 0) {
+                                                  eventStoreStreamLog.debug("[{}] loadEventsByGlobalOrder using fromInclusiveGlobalOrder {} returned {} events",
+                                                                            eventStreamLogName,
+                                                                            nextFromInclusiveGlobalOrder.get(),
+                                                                            persistedEvents.size());
+                                              } else {
+                                                  eventStoreStreamLog.trace("[{}] loadEventsByGlobalOrder using fromInclusiveGlobalOrder {} returned no events",
+                                                                            eventStreamLogName,
+                                                                            nextFromInclusiveGlobalOrder.get());
+                                              }
+                                              return Flux.fromIterable(persistedEvents);
+                                          } catch (RuntimeException e) {
+                                              log.error(msg("[{}] Polling failed", eventStreamLogName), e);
+                                              if (unitOfWork != null) {
+                                                  try {
+                                                      unitOfWork.rollback(e);
+                                                  } catch (Exception rollbackException) {
+                                                      log.error(msg("[{}] Failed to rollback unit of work", eventStreamLogName), rollbackException);
+                                                  }
+                                              }
+                                              eventStoreStreamLog.error(msg("[{}] Returning Error for '{}' EventStream with nextFromInclusiveGlobalOrder {}",
+                                                                            eventStreamLogName,
+                                                                            aggregateType,
+                                                                            nextFromInclusiveGlobalOrder.get()),
+                                                                        e);
+                                              return Flux.error(e);
+                                          }
+                                      }).doOnNext(event -> {
+                                          final long nextGlobalOrder = event.globalEventOrder().longValue() + 1L;
+                                          eventStoreStreamLog.trace("[{}] Updating nextFromInclusiveGlobalOrder from {} to {}",
+                                                                    eventStreamLogName,
+                                                                    nextFromInclusiveGlobalOrder.get(),
+                                                                    nextGlobalOrder);
+                                          nextFromInclusiveGlobalOrder.set(nextGlobalOrder);
+                                      }).doOnError(throwable -> {
+                                          eventStoreStreamLog.error(msg("[{}] Failed {}",
+                                                                        eventStreamLogName,
+                                                                        throwable.getMessage()),
+                                                                    throwable);
+                                      });
 
         return persistedEventsFlux
-                .repeatWhen(longFlux -> Flux.interval(pollingInterval.orElse(Duration.ofMillis(500))));
+                .repeatWhen(longFlux -> Flux.interval(pollingInterval.orElse(Duration.ofMillis(500))))
+                .publishOn(Schedulers.newSingle("Publish-" + subscriberId + "-" + aggregateType, true));
     }
 
     @Override
