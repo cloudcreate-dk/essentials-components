@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import dk.cloudcreate.essentials.components.common.transaction.UnitOfWork;
 import dk.cloudcreate.essentials.components.common.types.*;
 import dk.cloudcreate.essentials.components.distributed.fencedlock.postgresql.PostgresqlFencedLockManager;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.*;
@@ -41,7 +42,7 @@ class EventStoreSubscriptionManager_subscribeToAggregateEventsAsynchronously_IT 
 
     private Jdbi                                                             jdbi;
     private AggregateType                                                    aggregateType;
-    private UnitOfWorkFactory                                                unitOfWorkFactory;
+    private EventStoreUnitOfWorkFactory                                      unitOfWorkFactory;
     private TestPersistableEventMapper                                       eventMapper;
     private PostgresqlEventStore<SeparateTablePerAggregateTypeConfiguration> eventStore;
 
@@ -285,7 +286,7 @@ class EventStoreSubscriptionManager_subscribeToAggregateEventsAsynchronously_IT 
                                                  .reduce(Integer::sum)
                                                  .get();
         System.out.println("Total number of Order Events: " + totalNumberOfOrderEvents);
-        Awaitility.waitAtMost(Duration.ofSeconds(4))
+        Awaitility.waitAtMost(Duration.ofSeconds(5))
                   .untilAsserted(() -> assertThat(orderEventsReceived.size()).isEqualTo(totalNumberOfOrderEvents));
         assertThat(orderEventsReceived.stream().filter(persistedEvent -> !persistedEvent.aggregateType().equals(ORDERS)).findAny()).isEmpty();
         assertThat(orderEventsReceived.stream()
@@ -370,7 +371,7 @@ class EventStoreSubscriptionManager_subscribeToAggregateEventsAsynchronously_IT 
                                                  .reduce(Integer::sum)
                                                  .get();
         System.out.println("Total number of Order Events: " + totalNumberOfOrderEvents);
-        Awaitility.waitAtMost(Duration.ofSeconds(4))
+        Awaitility.waitAtMost(Duration.ofSeconds(5))
                   .untilAsserted(() -> assertThat(orderEventsReceived.size()).isEqualTo(totalNumberOfOrderEvents));
         assertThat(orderEventsReceived.stream().filter(persistedEvent -> !persistedEvent.aggregateType().equals(ORDERS)).findAny()).isEmpty();
         assertThat(orderEventsReceived.stream()

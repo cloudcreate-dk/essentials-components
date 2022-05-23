@@ -64,8 +64,8 @@ public class PostgresqlFencedLockManager implements FencedLockManager {
         this(jdbi,
              Optional.empty(),
              Optional.empty(),
-             Duration.ofSeconds(5),
-             Duration.ofSeconds(3));
+             lockTimeOut,
+             lockConfirmationInterval);
     }
 
     /**
@@ -186,22 +186,20 @@ public class PostgresqlFencedLockManager implements FencedLockManager {
         var confirmedTimestamp = OffsetDateTime.now(Clock.systemUTC());
         jdbi.useTransaction(handle -> {
             locksAcquiredByThisLockManager.forEach((lockName, lockCallback) -> {
-                long nextToken = lockCallback.getCurrentToken() + 1L;
                 var rowsUpdated = handle.createUpdate("UPDATE " + fencedLocksTableName + " SET " +
-                                                              "last_issued_fence_token=:last_issued_fence_token, lock_last_confirmed_ts=:lock_last_confirmed_ts\n" +
-                                                              "WHERE lock_name=:lock_name AND last_issued_fence_token=:previous_last_issued_fence_token AND locked_by_lockmanager_instance_id=:locked_by_lockmanager_instance_id")
+                                                              "lock_last_confirmed_ts=:lock_last_confirmed_ts\n" +
+                                                              "WHERE lock_name=:lock_name AND last_issued_fence_token=:last_issued_fence_token AND locked_by_lockmanager_instance_id=:locked_by_lockmanager_instance_id")
                                         .bind("lock_name", lockName)
-                                        .bind("last_issued_fence_token", nextToken)
                                         .bind("locked_by_lockmanager_instance_id", requireNonNull(lockCallback.getLockedByLockManagerInstanceId(), msg("[{}] getLockedByLockManagerInstanceId was NULL. Details: {}", lockManagerInstanceId, lockCallback)))
                                         .bind("lock_last_confirmed_ts", confirmedTimestamp)
-                                        .bind("previous_last_issued_fence_token", lockCallback.getCurrentToken())
+                                        .bind("last_issued_fence_token", lockCallback.getCurrentToken())
                                         .execute();
                 if (rowsUpdated == 0) {
                     // We failed to confirm this lock, someone must have taken over the lock in the meantime
                     log.info("[{}] Failed to confirm lock '{}', someone has taken over the lock: {}", lockManagerInstanceId, lockCallback.getName(), lockCallback);
                     lockCallback.release();
                 } else {
-                    lockCallback.markAsConfirmed(nextToken, confirmedTimestamp);
+                    lockCallback.markAsConfirmed(confirmedTimestamp);
                     log.debug("[{}] Confirmed lock '{}': {}", lockManagerInstanceId, lockCallback.getName(), lockCallback);
                 }
             });
@@ -635,9 +633,8 @@ public class PostgresqlFencedLockManager implements FencedLockManager {
             lockCallbacks.forEach(lockCallback -> lockCallback.lockReleased(this));
         }
 
-        PostgresqlFencedLock markAsConfirmed(long newToken, OffsetDateTime confirmedTimestamp) {
+        PostgresqlFencedLock markAsConfirmed(OffsetDateTime confirmedTimestamp) {
             lockLastConfirmedTimestamp = confirmedTimestamp;
-            currentToken = newToken;
             return this;
         }
 

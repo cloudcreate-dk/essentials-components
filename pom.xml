@@ -59,7 +59,7 @@
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
         <revision>DEV-SNAPSHOT</revision>
-        <essentials.version>0.7.1</essentials.version>
+        <essentials.version>0.7.2</essentials.version>
         <slf4j.version>1.7.36</slf4j.version>
         <postgresql.version>42.3.5</postgresql.version>
         <objenesis.version>3.2</objenesis.version>
@@ -71,6 +71,7 @@
         <module>postgresql-distributed-fenced-lock</module>
         <module>postgresql-event-store</module>
         <module>spring-postgresql-event-store</module>
+        <module>postgresql-queue</module>
     </modules>
 
     <dependencyManagement>
@@ -85,14 +86,14 @@
             <dependency>
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers-bom</artifactId>
-                <version>1.17.1</version>
+                <version>1.17.2</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
             <dependency>
                 <groupId>org.jdbi</groupId>
                 <artifactId>jdbi3-bom</artifactId>
-                <version>3.28.0</version>
+                <version>3.29.0</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

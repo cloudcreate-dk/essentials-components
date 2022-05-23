@@ -1,7 +1,7 @@
 package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.bus;
 
+import dk.cloudcreate.essentials.components.common.transaction.UnitOfWork;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.PersistedEvent;
-import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction.UnitOfWork;
 
 import java.util.List;
 

@@ -1,5 +1,6 @@
 package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql;
 
+import dk.cloudcreate.essentials.components.common.transaction.*;
 import dk.cloudcreate.essentials.components.common.types.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.bus.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.*;
@@ -25,7 +26,7 @@ import static dk.cloudcreate.essentials.shared.MessageFormatter.msg;
 public class PostgresqlEventStore<CONFIG extends AggregateTypeConfiguration> implements EventStore<CONFIG> {
     private static final Logger log = LoggerFactory.getLogger(PostgresqlEventStore.class);
 
-    private final UnitOfWorkFactory                               unitOfWorkFactory;
+    private final EventStoreUnitOfWorkFactory                     unitOfWorkFactory;
     private final AggregateEventStreamPersistenceStrategy<CONFIG> aggregateTypeConfigurations;
 
 
@@ -40,7 +41,7 @@ public class PostgresqlEventStore<CONFIG extends AggregateTypeConfiguration> imp
     private final List<EventStoreInterceptor>                eventStoreInterceptors;
     private final EventStoreLocalEventBus                    eventStoreLocalEventBus;
 
-    public <STRATEGY extends AggregateEventStreamPersistenceStrategy<CONFIG>> PostgresqlEventStore(UnitOfWorkFactory unitOfWorkFactory,
+    public <STRATEGY extends AggregateEventStreamPersistenceStrategy<CONFIG>> PostgresqlEventStore(EventStoreUnitOfWorkFactory unitOfWorkFactory,
                                                                                                    STRATEGY aggregateTypeConfiguration) {
         this.unitOfWorkFactory = requireNonNull(unitOfWorkFactory, "No unitOfWorkFactory provided");
         this.aggregateTypeConfigurations = requireNonNull(aggregateTypeConfiguration, "No eventStreamPersistenceStrategy provided");

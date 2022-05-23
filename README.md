@@ -32,15 +32,15 @@ To use `common-types` just add the following Maven dependency:
 # Event Sourced Aggregates
 
 This library focuses on providing different flavours of Event Source Aggregates that are built to work with the `EventStore` concept.  
-The `EventStore` is very flexible and doesn't specify any specific design requirements for an Aggregate or its Events, except that that have to be associated with an `AggregateType` (see the 
+The `EventStore` is very flexible and doesn't specify any specific design requirements for an Aggregate or its Events, except that that have to be associated with an `AggregateType` (see the
 `AggregateType` sub section or the `EventStore` section for more information).
 
-This library supports multiple flavours of Aggregate design such as the `AggregateRoot`, `AggregateRootWithState` and the `FlexAggregate`.   
+This library supports multiple flavours of Aggregate design such as the `AggregateRoot`, `AggregateRootWithState` and the `FlexAggregate`.
 
 #### Order aggregate with separate state object
 
-Below is an example of an `Order` aggregate based on the `AggregateRootWithState` concept, where the Aggregate contains the command methods and all event handlers and state are contained
-within an `AggregateState` object, which in this case is called the `OrderState`:
+Below is an example of an `Order` aggregate based on the `AggregateRootWithState` concept, where the Aggregate contains the command methods and all event handlers and state are contained within
+an `AggregateState` object, which in this case is called the `OrderState`:
 
 ```
 public class Order extends AggregateRootWithState<OrderId, OrderState, Order> {
@@ -151,7 +151,9 @@ public final class OrderEvents {
 ```
 
 #### OrderState:
+
 The state object must inherit from the `AggregateState` base class:
+
 ```
 public class OrderState extends AggregateState<OrderId> {
     Map<ProductId, Integer> productAndQuantity;
@@ -186,6 +188,7 @@ public class OrderState extends AggregateState<OrderId> {
 ```
 
 ### AggregateType
+
 Each Aggregate implementation class (such as the `Order` Aggregate above) needs to be associated with an `AggregateType`.  
 An `AggregateType` should not be confused with the Java implementation class for your Aggregate.
 
@@ -216,7 +219,7 @@ In order to acquire an `AggregateRootRepository` instance for your Aggregate Roo
 on the `AggregateRootRepository` interface.
 
 Apart from providing an instance of the `EventStore` you also need to provide an `AggregateTypeConfiguration`, such as the `SeparateTablePerAggregateTypeConfiguration`
-that instructs the `EventStore`'s  persistence strategy, such as the `SeparateTablePerAggregateTypePersistenceStrategy` how to map your Java Events into JSON in the Event Store.
+that instructs the `EventStore`'s persistence strategy, such as the `SeparateTablePerAggregateTypePersistenceStrategy` how to map your Java Events into JSON in the Event Store.
 (see the `PostgreSQL Event Store` section for details on configuring the `EventStore`)
 
 ```
@@ -243,6 +246,7 @@ var order = transactionTemplate.execute(status -> ordersRepository.load(orderId)
 ```
 
 To use `EventSourced Aggregates` just add the following Maven dependency:
+
 ```
 <dependency>
     <groupId>dk.cloudcreate.essentials.components/groupId>
@@ -261,44 +265,47 @@ The primary concept of the EventStore are **Event Streams**
 Definition: An Event Stream is a collection of related Events *(e.g. Order events that are related to Order aggregate instances)*   
 The most common denominator for Events in an Event Stream is the Type of Aggregate they're associated with.  
 Classical examples of Aggregate Types and their associated events are:
+
 - **Order** aggregate  
   *Examples of Order Events:*
-  - OrderCreated
-  - ProductAddedToOrder
-  - ProductRemoveFromOrder
-  - OrderAccepted
+    - OrderCreated
+    - ProductAddedToOrder
+    - ProductRemoveFromOrder
+    - OrderAccepted
 - **Account** aggregate  
   *Examples of Account Events:*
-  - AccountRegistered
-  - AccountCredited
-  - AccountDebited
+    - AccountRegistered
+    - AccountCredited
+    - AccountDebited
 - **Customer** aggregate  
   *Examples of Customer Events:*
-  - CustomerRegistered
-  - CustomerMoved
-  - CustomersAddressCorrected
-  - CustomerStatusChanged
+    - CustomerRegistered
+    - CustomerMoved
+    - CustomersAddressCorrected
+    - CustomerStatusChanged
 
 We could put all Events from all Aggregate Types into one Event Stream, but this is often not very useful:
-- From a usage and use case perspective it makes more sense to subscribe and handle events related to the same type of Aggregates separate from the handling of other Events related to other types of Aggregates.  
-  - E.g. it makes more sense to handle Order related Events separate from Account related Events
-- Using the `SeparateTablePerAggregateTypePersistenceStrategy` we can store all Events related to a specific `AggregateType` in a separate table from other Aggregate types, which is more efficient and allows us to store many more Events related to this given `AggregateType`.  
+
+- From a usage and use case perspective it makes more sense to subscribe and handle events related to the same type of Aggregates separate from the handling of other Events related to other types of
+  Aggregates.
+    - E.g. it makes more sense to handle Order related Events separate from Account related Events
+- Using the `SeparateTablePerAggregateTypePersistenceStrategy` we can store all Events related to a specific `AggregateType` in a separate table from other Aggregate types, which is more efficient and
+  allows us to store many more Events related to this given `AggregateType`.  
   This allows use to use the PersistedEvent.globalEventOrder() to track the order in which Events, related to the same type of Aggregate, were persisted.    
-  This also allows us to use the GlobalEventOrder as a natual Resume.Point for the EventStore subscriptions (see EventStoreSubscriptionManager)  
+  This also allows us to use the GlobalEventOrder as a natual Resume.Point for the EventStore subscriptions (see EventStoreSubscriptionManager)
 
 This aligns with the concept of the `AggregateEventStream` which contains Events related to a specific `AggregateType` with a distinct **AggregateId**  
-When loading/fetching and persisting/appending Events we always work at the Aggregate instance level, i.e. with `AggregateEventStream`'s.  
+When loading/fetching and persisting/appending Events we always work at the Aggregate instance level, i.e. with `AggregateEventStream`'s.
 
 The `AggregateType` is used for grouping/categorizing multiple `AggregateEventStream` instances related to similar types of aggregates.  
-Unless you're using a fully functional style aggregate where you only perform a Left-Fold of all Events in an AggregateEventStream, then there will typically be 
-a 1-1 relationship between an `AggregateType` and the class that implements the Aggregate.  
+Unless you're using a fully functional style aggregate where you only perform a Left-Fold of all Events in an AggregateEventStream, then there will typically be a 1-1 relationship between
+an `AggregateType` and the class that implements the Aggregate.
 
 What's important here is that the `AggregateType` is only a name and shouldn't be confused with the Fully Qualified Class Name of the Aggregate implementation class.   
 This is the classical split between the logical concept and the physical implementation.  
-It's important to not link the Aggregate Implementation Class (the Fully Qualified Class Name) with the AggregateType name as that would make refactoring of your code 
-base much harder, as the Fully Qualified Class Name then would be captured in the stored Events.  
-Had the `AggregateType` and the Aggregate Implementation Class been one and the same, then moving the Aggregate class to another package or renaming it would break many 
-things.   
+It's important to not link the Aggregate Implementation Class (the Fully Qualified Class Name) with the AggregateType name as that would make refactoring of your code base much harder, as the Fully
+Qualified Class Name then would be captured in the stored Events.  
+Had the `AggregateType` and the Aggregate Implementation Class been one and the same, then moving the Aggregate class to another package or renaming it would break many things.   
 To avoid the temptation to use the same name for both the AggregateType and the Aggregate Implementation Class, we prefer using the **plural name** of the Aggregate as the `AggregateType` name.  
 Example:
 
@@ -350,9 +357,9 @@ eventStore = new PostgresqlEventStore<>(unitOfWorkFactory,
 
 ## PersistableEventMapper
 
-The `MyPersistableEventMapper` is a mapper that you need to write in order to provide a translation between generic Java based Events such as `OrderAdded`, `OrderAccepted` and the `PersistableEvent` type that
-the `EventStore` knows how to persist.  
-The custom `PersistableEventMapper` can also provide context specific information such as `Tenant`, `CorrelationId`, etc.  
+The `MyPersistableEventMapper` is a mapper that you need to write in order to provide a translation between generic Java based Events such as `OrderAdded`, `OrderAccepted` and the `PersistableEvent`
+type that the `EventStore` knows how to persist.  
+The custom `PersistableEventMapper` can also provide context specific information such as `Tenant`, `CorrelationId`, etc.
 
 Here an example of a `TestPersistableEventMapper`:
 
@@ -487,7 +494,9 @@ private ObjectMapper createObjectMapper() {
 ```
 
 ## Appending Events to an AggregateType's EventStream
+
 Example of appending the `OrderAdded` event, related to the `"Orders"` `AggregateType` with **aggregateId** specified by the `orderId` variable:
+
 ```
 var orders = AggregateType.of("Order");
 
@@ -501,7 +510,10 @@ eventStore.unitOfWorkFactory().usingUnitOfWork(unitOfWork -> {
 });
 ```
 
+## Fetching Events from an AggregateType's EventStream
+
 Example fetching an `AggregateEventStream` for the `"Orders"` `AggregateType` with **aggregateId** specified by the `orderId` variable:
+
 ```
 var orders = AggregateType.of("Order");
 
@@ -551,13 +563,6 @@ Using asynchronous event subscription the `EventStoreSubscriptionManager` will k
   cluster can subscribe.
 - `subscribeToAggregateEventsAsynchronously` - same as above, just without using the `FencedLockManager` to coordinate subscribers in a cluster
 
-### Subscribe synchronously
-
-Synchronous subscription allows you to receive and react to Events published within the active Transaction/`UnitOfWork` that's involved in `appending` the events to the `EventStream`
-This can be useful for certain transactional views/projections where you require transactional consistency (e.g. assigning a sequential customer number, etc.):
-
-- `subscribeToAggregateEventsInTransaction`
-
 Example using `exclusivelySubscribeToAggregateEventsAsynchronously`:
 
 ```
@@ -579,6 +584,15 @@ var productsSubscription = eventStoreSubscriptionManager.exclusivelySubscribeToA
                                                    // All subsequent subscriptions for the same subscriber, the EventStoreSubscriptionManager
                                                    // keeps track of the Resume Point using the PostgresqlDurableSubscriptionRepository
         Optional.empty(),
+        new FencedLockAwareSubscriber() {
+            @Override
+            public void onLockAcquired(FencedLock fencedLock, SubscriptionResumePoint resumeFromAndIncluding) {
+            }
+
+            @Override
+            public void onLockReleased(FencedLock fencedLock) {
+            }
+        },
         new PersistedEventHandler() {
             @Override
             public void onResetFrom(GlobalEventOrder globalEventOrder) {
@@ -594,12 +608,19 @@ var productsSubscription = eventStoreSubscriptionManager.exclusivelySubscribeToA
         });
 ```
 
-You can also use Event Pattern matching, using the `PatternMatchingPersistedEventHandler` to automatically call methods annotated with the `@SubscriptionEventHandler` annotation, 
-where the first argument matches the Event type (contained in the `PersistedEvent#event()`).  
-If the `PersistedEvent#event()` contains a **typed/class based Event** then it matches on the first argument/parameter of the method.  
-If the `PersistedEvent#event()` contains a **named Event**, then it matches on a method that accepts a String argument.  
-Each method may also include a 2nd argument that is of type `PersistedEvent` in which case the event that's being matched is included in the call to the method.    
-The methods can have any accessibility (private, public, etc.), they just have to be instance methods.  
+When using
+
+- `EventStoreSubscriptionManager#exclusivelySubscribeToAggregateEventsAsynchronously(SubscriberId, AggregateType, GlobalEventOrder, Optional, PersistedEventHandler)`
+- `EventStoreSubscriptionManager#subscribeToAggregateEventsAsynchronously(SubscriberId, AggregateType, GlobalEventOrder, Optional, PersistedEventHandler)`
+
+then you can also use Event Pattern matching, using the `PatternMatchingPersistedEventHandler` to automatically call methods annotated with the `@SubscriptionEventHandler`
+annotation and where the 1st argument matches the actual Event type (contained in the `PersistedEvent#event()`) provided to the `PersistedEventHandler#handle(PersistedEvent)` method:
+
+- If the `PersistedEvent#event()` contains a **typed/class based Event** then it matches on the 1st argument/parameter of the `@SubscriptionEventHandler` annotated method.
+- If the `PersistedEvent#event()` contains a **named Event**, then it matches on a `@SubscriptionEventHandle` annotated method that accepts a `String` as 1st argument.
+
+Each method may also include a 2nd argument that of type `PersistedEvent` in which case the event that's being matched is included as the 2nd argument in the call to the method.        
+The methods can have any accessibility (private, public, etc.), they just have to be instance methods.
 
 ```
 public class MyEventHandler extends PatternMatchingPersistedEventHandler {
@@ -629,6 +650,77 @@ public class MyEventHandler extends PatternMatchingPersistedEventHandler {
           ...
         }
 
+}
+```
+
+### Subscribe synchronously
+
+Synchronous subscription allows you to receive and react to Events published within the active Transaction/`UnitOfWork` that's involved in `appending` the events to the `EventStream`
+This can be useful for certain transactional views/projections where you require transactional consistency (e.g. assigning a sequential customer number, etc.):
+
+- `subscribeToAggregateEventsInTransaction`
+
+```
+var eventStoreSubscriptionManager = EventStoreSubscriptionManager.createFor(eventStore,
+                                                                             50,
+                                                                             Duration.ofMillis(100),
+                                                                             new PostgresqlFencedLockManager(jdbi,
+                                                                                                             Duration.ofSeconds(3),
+                                                                                                             Duration.ofSeconds(1)),
+                                                                             Duration.ofSeconds(1),
+                                                                             new PostgresqlDurableSubscriptionRepository(jdbi));
+eventStoreSubscriptionManager.start();
+
+var productsSubscription = eventStoreSubscriptionManager.subscribeToAggregateEventsInTransaction(
+        SubscriberId.of("ProductSubscriber"),
+        AggregateType.of("Products"),
+        Optional.empty(),
+        new TransactionalPersistedEventHandler() {
+            @Override
+            public void handle(PersistedEvent event, UnitOfWork unitOfWork) {
+               ...
+            }
+        });
+```
+
+When using
+
+- `EventStoreSubscriptionManager#subscribeToAggregateEventsInTransaction(SubscriberId, AggregateType, Optional, TransactionalPersistedEventHandler)`
+
+then you can also use Event Pattern matching, using the pattern matching `TransactionalPersistedEventHandler`.  
+The `PatternMatchingTransactionalPersistedEventHandler` will automatically call methods annotated with the `@SubscriptionEventHandler` annotation and where the 1st argument matches the actual Event
+type (contained in the `PersistedEvent#event()` provided to the `PersistedEventHandler#handle(PersistedEvent)` method and where the 2nd argument is a `UnitOfWork`:
+
+- If the `PersistedEvent#event()` contains a **typed/class based Event** then it matches on the 1st argument/parameter of the `@SubscriptionEventHandler` annotated method.
+- If the `PersistedEvent#event()` contains a **named Event**, then it matches on a `@SubscriptionEventHandle` annotated method that accepts a `String` as 1st argument.
+
+Each method may also include a 3rd argument that of type `PersistedEvent` in which case the event that's being matched is included as the 3rd argument in the call to the method.  
+The methods can have any accessibility (private, public, etc.), they just have to be instance methods.
+
+Example:
+
+```
+public class MyEventHandler extends PatternMatchingTransactionalPersistedEventHandler {
+
+        @SubscriptionEventHandler
+        public void handle(OrderEvent.OrderAdded orderAdded, UnitOfWork unitOfWork) {
+            ...
+        }
+
+        @SubscriptionEventHandler
+        private void handle(OrderEvent.ProductAddedToOrder productAddedToOrder, UnitOfWork unitOfWork) {
+          ...
+        }
+
+        @SubscriptionEventHandler
+        private void handle(OrderEvent.ProductRemovedFromOrder productRemovedFromOrder, UnitOfWork unitOfWork, PersistedEvent productRemovedFromOrderPersistedEvent) {
+          ...
+        }
+
+        @SubscriptionEventHandler
+        private void handle(String json, UnitOfWork unitOfWork, PersistedEvent jsonPersistedEvent) {
+          ...
+        }
 }
 ```
 
@@ -668,7 +760,7 @@ class Application {
     }
     
     @Bean
-    public UnitOfWorkFactory unitOfWorkFactory(Jdbi jdbi, PlatformTransactionManager transactionManager) {
+    public EventStoreUnitOfWorkFactory unitOfWorkFactory(Jdbi jdbi, PlatformTransactionManager transactionManager) {
         return new SpringManagedUnitOfWorkFactory(jdbi, transactionManager);
     }
 }
@@ -698,7 +790,7 @@ eventStore.addAggregateTypeConfiguration(
                                                   
 ```
 
-You can still use the UnitOfWorkFactory to start and commit Spring transactions, or you can use the `TransactionTemplate` class or `@Transactional` annotation to start and commit transactions.
+You can still use the `UnitOfWorkFactory` to start and commit Spring transactions, or you can use the `TransactionTemplate` class or `@Transactional` annotation to start and commit transactions.
 
 No matter how a transaction then you can always acquire the active `UnitOfWork` using
 
@@ -780,4 +872,64 @@ To use `PostgreSQL Distributed Fenced Lock` just add the following Maven depende
 
 ## PostgreSQL Durable Queue
 
-This library focuses purely on providing a durable Queue with support for DLQ (Dead Letter Queue) and message redelivery Coming soon
+This library focuses on providing a Durable Queue supporting message redelivery and Dead Letter Message functionality based on postgresql
+
+Durable Queue concept that supports **queuing** a message on to a Queue. Each message is associated with a unique `QueueEntryId`.  
+Each Queue is uniquely identified by its `QueueName` Queued messages can, per Queue, asynchronously be consumed by a `QueuedMessageHandler`, by registering it as a `DurableQueueConsumer`
+using `DurableQueues#consumeFromQueue(QueueName, QueuedMessageHandler, QueueRedeliveryPolicy, int)`
+
+The `DurableQueues` supports delayed message delivery as well as **Dead Letter Messages**, which are messages that have been marked as a **Dead Letter Messages** (due to an error processing the
+message).  
+Dead Letter Messages won't be delivered to a `DurableQueueConsumer`, unless you call `DurableQueues#resurrectDeadLetterMessage(QueueEntryId, Duration)`
+
+The `DurableQueueConsumer` supports retrying failed messages, according to the specified `QueueRedeliveryPolicy`, and ultimately marking a repeatedly failing message as a **Dead Letter Message**.
+The `QueueRedeliveryPolicy` supports fixed, linear and exponential backoff strategies.
+
+Example setting up `PostgresqlDurableQueues` (note: you can also use it together with either the `EventStoreManagedUnitOfWorkFactory` or `SpringManagedUnitOfWorkFactory`):
+
+```
+var unitOfWorkFactory = new GenericHandleAwareUnitOfWorkFactory<>(jdbi)) {
+
+    @Override
+    protected GenericHandleAwareUnitOfWork createNewUnitOfWorkInstance(GenericHandleAwareUnitOfWorkFactory<GenericHandleAwareUnitOfWork> unitOfWorkFactory) {
+        return new GenericHandleAwareUnitOfWork(unitOfWorkFactory);
+    }
+};
+var durableQueues = new PostgresqlDurableQueues(unitOfWorkFactory);
+durableQueues.start();
+```
+
+Example Queuing a message:
+
+```
+var queueEntryId = durableQueues.queueMessage(QueueName.of("TestQueue"),
+                                              new OrderEvent.OrderAccepted(OrderId.random()));
+```
+
+Example Consuming messages for a Queue:
+
+```
+var consumer = durableQueues.consumeFromQueue(queueName,
+                                              QueueRedeliveryPolicy.fixedBackoff(
+                                              Duration.ofMillis(200), // Fixed 200 ms delay between redeliveries (linear and exponential backoff is also supported)  
+                                              5),                     // Maximum number of retries before the message is marked as a Dead Letter Message
+                                              1,                      // Number of parallel consumers
+                                              queueMessage -> {
+                                                // Handle message           
+                                              });
+   ...
+   
+// When you're done with the consumer then you can call cancel 
+// Alternatively you can call durableQueues.stop() during service/application shutdown and it will cancel and remove the consumer
+consumer.cancel();
+```
+
+To use `PostgreSQL Durable Queue` just add the following Maven dependency:
+
+```
+<dependency>
+    <groupId>dk.cloudcreate.essentials.components</groupId>
+    <artifactId>postgresql-queue</artifactId>
+    <version>0.1.0</version>
+</dependency>
+```

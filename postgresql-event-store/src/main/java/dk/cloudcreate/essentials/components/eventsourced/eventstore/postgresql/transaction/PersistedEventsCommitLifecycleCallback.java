@@ -1,5 +1,6 @@
 package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction;
 
+import dk.cloudcreate.essentials.components.common.transaction.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.PersistedEvent;
 
 import java.util.List;

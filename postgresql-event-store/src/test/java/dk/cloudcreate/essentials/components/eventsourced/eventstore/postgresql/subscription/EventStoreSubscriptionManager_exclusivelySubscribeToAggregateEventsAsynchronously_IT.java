@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import dk.cloudcreate.essentials.components.common.transaction.UnitOfWork;
 import dk.cloudcreate.essentials.components.common.types.*;
+import dk.cloudcreate.essentials.components.distributed.fencedlock.FencedLock;
 import dk.cloudcreate.essentials.components.distributed.fencedlock.postgresql.PostgresqlFencedLockManager;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.*;
@@ -41,7 +43,7 @@ class EventStoreSubscriptionManager_exclusivelySubscribeToAggregateEventsAsynchr
 
     private Jdbi                                                             jdbi;
     private AggregateType                                                    aggregateType;
-    private UnitOfWorkFactory                                                unitOfWorkFactory;
+    private EventStoreUnitOfWorkFactory                                      unitOfWorkFactory;
     private TestPersistableEventMapper                                       eventMapper;
     private PostgresqlEventStore<SeparateTablePerAggregateTypeConfiguration> eventStore;
 
@@ -112,6 +114,17 @@ class EventStoreSubscriptionManager_exclusivelySubscribeToAggregateEventsAsynchr
                 PRODUCTS,
                 GlobalEventOrder.FIRST_GLOBAL_EVENT_ORDER,
                 Optional.empty(),
+                new FencedLockAwareSubscriber() {
+                    @Override
+                    public void onLockAcquired(FencedLock fencedLock, SubscriptionResumePoint resumeFromAndIncluding) {
+                        System.out.println("Lock acquired: " + fencedLock);
+                    }
+
+                    @Override
+                    public void onLockReleased(FencedLock fencedLock) {
+                        System.out.println("Lock released: " + fencedLock);
+                    }
+                },
                 new PersistedEventHandler() {
                     @Override
                     public void onResetFrom(GlobalEventOrder globalEventOrder) {
@@ -132,6 +145,17 @@ class EventStoreSubscriptionManager_exclusivelySubscribeToAggregateEventsAsynchr
                 ORDERS,
                 GlobalEventOrder.FIRST_GLOBAL_EVENT_ORDER,
                 Optional.empty(),
+                new FencedLockAwareSubscriber() {
+                    @Override
+                    public void onLockAcquired(FencedLock fencedLock, SubscriptionResumePoint resumeFromAndIncluding) {
+                        System.out.println("Lock acquired: " + fencedLock);
+                    }
+
+                    @Override
+                    public void onLockReleased(FencedLock fencedLock) {
+                        System.out.println("Lock released: " + fencedLock);
+                    }
+                },
                 new PersistedEventHandler() {
                     @Override
                     public void onResetFrom(GlobalEventOrder globalEventOrder) {
@@ -206,7 +230,7 @@ class EventStoreSubscriptionManager_exclusivelySubscribeToAggregateEventsAsynchr
 
         productsSubscription.stop();
         Awaitility.waitAtMost(Duration.ofSeconds(2))
-                          .untilAsserted(() -> assertThat(productsSubscription.isActive()).isFalse());
+                  .untilAsserted(() -> assertThat(productsSubscription.isActive()).isFalse());
         ordersSubscription.stop();
         Awaitility.waitAtMost(Duration.ofSeconds(2))
                   .untilAsserted(() -> assertThat(ordersSubscription.isActive()).isFalse());
@@ -290,7 +314,7 @@ class EventStoreSubscriptionManager_exclusivelySubscribeToAggregateEventsAsynchr
                                                  .reduce(Integer::sum)
                                                  .get();
         System.out.println("Total number of Order Events: " + totalNumberOfOrderEvents);
-        Awaitility.waitAtMost(Duration.ofSeconds(4))
+        Awaitility.waitAtMost(Duration.ofSeconds(5))
                   .untilAsserted(() -> assertThat(orderEventsReceived.size()).isEqualTo(totalNumberOfOrderEvents));
         assertThat(orderEventsReceived.stream().filter(persistedEvent -> !persistedEvent.aggregateType().equals(ORDERS)).findAny()).isEmpty();
         assertThat(orderEventsReceived.stream()
@@ -347,7 +371,7 @@ class EventStoreSubscriptionManager_exclusivelySubscribeToAggregateEventsAsynchr
                 }
                 if (count == 80) {
                     ordersSubscription.set(createOrderSubscription(orderEventsReceived));
-                    Awaitility.waitAtMost(Duration.ofSeconds(4))
+                    Awaitility.waitAtMost(Duration.ofSeconds(5))
                               .untilAsserted(() -> assertThat(ordersSubscription.get().isActive()).isTrue());
                     assertThat(ordersSubscription.get().isStarted()).isTrue();
                     assertThat(eventStoreSubscriptionManagerNode1.hasSubscription(ordersSubscription.get())).isTrue();
@@ -376,7 +400,7 @@ class EventStoreSubscriptionManager_exclusivelySubscribeToAggregateEventsAsynchr
                                                  .reduce(Integer::sum)
                                                  .get();
         System.out.println("Total number of Order Events: " + totalNumberOfOrderEvents);
-        Awaitility.waitAtMost(Duration.ofSeconds(4))
+        Awaitility.waitAtMost(Duration.ofSeconds(5))
                   .untilAsserted(() -> assertThat(orderEventsReceived.size()).isEqualTo(totalNumberOfOrderEvents));
         assertThat(orderEventsReceived.stream().filter(persistedEvent -> !persistedEvent.aggregateType().equals(ORDERS)).findAny()).isEmpty();
         assertThat(orderEventsReceived.stream()
@@ -404,6 +428,17 @@ class EventStoreSubscriptionManager_exclusivelySubscribeToAggregateEventsAsynchr
                 ORDERS,
                 GlobalEventOrder.FIRST_GLOBAL_EVENT_ORDER,
                 Optional.empty(),
+                new FencedLockAwareSubscriber() {
+                    @Override
+                    public void onLockAcquired(FencedLock fencedLock, SubscriptionResumePoint resumeFromAndIncluding) {
+                        System.out.println("Lock acquired: " + fencedLock);
+                    }
+
+                    @Override
+                    public void onLockReleased(FencedLock fencedLock) {
+                        System.out.println("Lock released: " + fencedLock);
+                    }
+                },
                 new PersistedEventHandler() {
                     @Override
                     public void onResetFrom(GlobalEventOrder globalEventOrder) {

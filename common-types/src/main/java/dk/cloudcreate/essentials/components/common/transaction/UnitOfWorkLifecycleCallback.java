@@ -1,4 +1,4 @@
-package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction;
+package dk.cloudcreate.essentials.components.common.transaction;
 
 import java.util.List;
 

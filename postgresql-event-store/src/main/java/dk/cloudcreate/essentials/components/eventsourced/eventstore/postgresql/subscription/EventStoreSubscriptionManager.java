@@ -1,13 +1,13 @@
 package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.subscription;
 
 import dk.cloudcreate.essentials.components.common.Lifecycle;
+import dk.cloudcreate.essentials.components.common.transaction.UnitOfWork;
 import dk.cloudcreate.essentials.components.common.types.*;
 import dk.cloudcreate.essentials.components.distributed.fencedlock.*;
 import dk.cloudcreate.essentials.components.distributed.fencedlock.postgresql.PostgresqlFencedLockManager;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.bus.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.*;
-import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction.UnitOfWork;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.GlobalEventOrder;
 import dk.cloudcreate.essentials.shared.FailFast;
 import dk.cloudcreate.essentials.shared.concurrent.ThreadFactoryBuilder;
@@ -64,6 +64,7 @@ public interface EventStoreSubscriptionManager extends Lifecycle {
      * @param onFirstSubscriptionSubscribeFromAndIncludingGlobalOrder If it's the first time the given <code>subscriberId</code> is subscribing then the subscription will be using this {@link GlobalEventOrder} as the starting point in the
      *                                                                EventStream associated with the <code>aggregateType</code>
      * @param onlyIncludeEventsForTenant                              if {@link Optional#isPresent()} then only include events that belong to the specified {@link Tenant}, otherwise all Events matching the criteria are returned
+     * @param fencedLockAwareSubscriber                               Callback interface that will be called when the exclusive/fenced lock is acquired or released
      * @param eventHandler                                            the event handler that will receive the published {@link PersistedEvent}'s
      * @return the subscription handle
      */
@@ -71,7 +72,35 @@ public interface EventStoreSubscriptionManager extends Lifecycle {
                                                                                AggregateType forAggregateType,
                                                                                GlobalEventOrder onFirstSubscriptionSubscribeFromAndIncludingGlobalOrder,
                                                                                Optional<Tenant> onlyIncludeEventsForTenant,
+                                                                               FencedLockAwareSubscriber fencedLockAwareSubscriber,
                                                                                PersistedEventHandler eventHandler);
+
+    /**
+     * Create an exclusive asynchronous subscription that will receive {@link PersistedEvent} after they have been committed to the {@link EventStore}<br>
+     * This ensures that the handling of events can occur in a separate transaction, than the one that persisted the events, thereby avoiding the dual write problem<br>
+     * An exclusive subscription means that the {@link EventStoreSubscriptionManager} will acquire a distributed {@link FencedLock} to ensure that only one active subscriber in a cluster,
+     * out of all subscribers that share the same <code>subscriberId</code>, is allowed to have an active subscribe at a time
+     *
+     * @param subscriberId                                            the unique id for the subscriber
+     * @param forAggregateType                                        the type of aggregate that we're subscribing for {@link PersistedEvent}'s related to
+     * @param onFirstSubscriptionSubscribeFromAndIncludingGlobalOrder If it's the first time the given <code>subscriberId</code> is subscribing then the subscription will be using this {@link GlobalEventOrder} as the starting point in the
+     *                                                                EventStream associated with the <code>aggregateType</code>
+     * @param onlyIncludeEventsForTenant                              if {@link Optional#isPresent()} then only include events that belong to the specified {@link Tenant}, otherwise all Events matching the criteria are returned
+     * @param handler                                                 combined the event handler that will receive the published {@link PersistedEvent}'s and Callback interface that will be called when the exclusive/fenced lock is acquired or released
+     * @return the subscription handle
+     */
+    default <HANDLER extends PersistedEventHandler & FencedLockAwareSubscriber> EventStoreSubscription exclusivelySubscribeToAggregateEventsAsynchronously(SubscriberId subscriberId,
+                                                                                                                                                           AggregateType forAggregateType,
+                                                                                                                                                           GlobalEventOrder onFirstSubscriptionSubscribeFromAndIncludingGlobalOrder,
+                                                                                                                                                           Optional<Tenant> onlyIncludeEventsForTenant,
+                                                                                                                                                           HANDLER handler) {
+        return exclusivelySubscribeToAggregateEventsAsynchronously(subscriberId,
+                                                                   forAggregateType,
+                                                                   onFirstSubscriptionSubscribeFromAndIncludingGlobalOrder,
+                                                                   onlyIncludeEventsForTenant,
+                                                                   handler,
+                                                                   handler);
+    }
 
     /**
      * Create an inline event subscription, that will receive {@link PersistedEvent}'s right after they're appended to the {@link EventStore} but before the associated
@@ -211,9 +240,9 @@ public interface EventStoreSubscriptionManager extends Lifecycle {
         }
 
         private void saveResumePointsForAllSubscribers() {
-            // TODO: Filter out active subscribers and decide if we increment the global event order like when the subscriber stops.
+            // TODO: Filter out active subscribers and decide if we can increment the global event order like when the subscriber stops.
             //   Current approach is safe with regards to reset of resume-points, but it will result in one overlapping event during resubscription
-            //   related to a failed node or after a subscription manager failure (i.e. it doesn't run stop() at all or to completion)
+            //   related to a failed node or after a subscription manager failure (i.e. it doesn't run stop() at all or run to completion)
             durableSubscriptionRepository.saveResumePoints(subscribers.values()
                                                                       .stream()
                                                                       .filter(eventStoreSubscription -> eventStoreSubscription.currentResumePoint().isPresent())
@@ -274,6 +303,7 @@ public interface EventStoreSubscriptionManager extends Lifecycle {
                                                                                           AggregateType forAggregateType,
                                                                                           GlobalEventOrder onFirstSubscriptionSubscribeFromAndIncludingGlobalOrder,
                                                                                           Optional<Tenant> onlyIncludeEventsForTenant,
+                                                                                          FencedLockAwareSubscriber fencedLockAwareSubscriber,
                                                                                           PersistedEventHandler eventHandler) {
             requireNonNull(onFirstSubscriptionSubscribeFromAndIncludingGlobalOrder, "No onFirstSubscriptionSubscribeFromAndIncludingGlobalOrder provided");
             requireNonNull(onlyIncludeEventsForTenant, "No onlyIncludeEventsForTenant option provided");
@@ -287,6 +317,7 @@ public interface EventStoreSubscriptionManager extends Lifecycle {
                                                                                    subscriberId,
                                                                                    onFirstSubscriptionSubscribeFromAndIncludingGlobalOrder,
                                                                                    onlyIncludeEventsForTenant,
+                                                                                   fencedLockAwareSubscriber,
                                                                                    eventHandler));
         }
 
@@ -671,6 +702,7 @@ public interface EventStoreSubscriptionManager extends Lifecycle {
             private final SubscriberId                  subscriberId;
             private final GlobalEventOrder              onFirstSubscriptionSubscribeFromAndIncludingGlobalOrder;
             private final Optional<Tenant>              onlyIncludeEventsForTenant;
+            private final FencedLockAwareSubscriber     fencedLockAwareSubscriber;
             private final PersistedEventHandler         eventHandler;
             private final LockName                      lockName;
 
@@ -687,6 +719,7 @@ public interface EventStoreSubscriptionManager extends Lifecycle {
                                                      SubscriberId subscriberId,
                                                      GlobalEventOrder onFirstSubscriptionSubscribeFromAndIncludingGlobalOrder,
                                                      Optional<Tenant> onlyIncludeEventsForTenant,
+                                                     FencedLockAwareSubscriber fencedLockAwareSubscriber,
                                                      PersistedEventHandler eventHandler) {
                 this.eventStore = requireNonNull(eventStore, "No eventStore provided");
                 this.fencedLockManager = requireNonNull(fencedLockManager, "No fencedLockManager provided");
@@ -696,6 +729,8 @@ public interface EventStoreSubscriptionManager extends Lifecycle {
                 this.onFirstSubscriptionSubscribeFromAndIncludingGlobalOrder = requireNonNull(onFirstSubscriptionSubscribeFromAndIncludingGlobalOrder,
                                                                                               "No onFirstSubscriptionSubscribeFromAndIncludingGlobalOrder provided");
                 this.onlyIncludeEventsForTenant = requireNonNull(onlyIncludeEventsForTenant, "No onlyIncludeEventsForTenant provided");
+                this.fencedLockAwareSubscriber = requireNonNull(fencedLockAwareSubscriber, "No fencedLockAwareSubscriber provided");
+                ;
                 this.eventHandler = requireNonNull(eventHandler, "No eventHandler provided");
                 lockName = LockName.of(msg("[{}-{}]", subscriberId, aggregateType));
             }
@@ -733,6 +768,12 @@ public interface EventStoreSubscriptionManager extends Lifecycle {
                                      aggregateType,
                                      resumePoint.getResumeFromAndIncluding());
 
+                            try {
+                                fencedLockAwareSubscriber.onLockAcquired(lock, resumePoint);
+                            } catch (Exception e) {
+                                log.error(msg("FencedLockAwareSubscriber#onLockAcquired failed for lock {} and resumePoint {}", lock.getName(), resumePoint), e);
+                            }
+
                             subscription = eventStore.pollEvents(aggregateType,
                                                                  resumePoint.getResumeFromAndIncluding(),
                                                                  Optional.of(eventStorePollingBatchSize),
@@ -768,6 +809,11 @@ public interface EventStoreSubscriptionManager extends Lifecycle {
                             log.info("[{}-{}] Lock Released. Stopping subscription",
                                      subscriberId,
                                      aggregateType);
+                            try {
+                                fencedLockAwareSubscriber.onLockReleased(lock);
+                            } catch (Exception e) {
+                                log.error(msg("FencedLockAwareSubscriber#onLockReleased failed for lock {}", lock.getName()), e);
+                            }
                             try {
                                 log.debug("[{}-{}] Stopping subscription flux",
                                           subscriberId,
