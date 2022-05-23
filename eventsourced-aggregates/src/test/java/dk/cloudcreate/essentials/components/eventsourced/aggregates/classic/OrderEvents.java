@@ -1,5 +1,7 @@
 package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic;
 
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
+
 public final class OrderEvents {
     // ------------------------------------------------------------------------ Events ------------------------------------------------------------------------------------
     // Note: These Events assume the ObjectMapper is configured without Objenesis Jackson JSON instantiation (only requires EssentialTypesJacksonModule from types-jackson)

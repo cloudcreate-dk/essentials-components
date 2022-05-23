@@ -7,6 +7,7 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import dk.cloudcreate.essentials.components.common.transaction.UnitOfWork;
 import dk.cloudcreate.essentials.components.common.types.*;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.bus.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.*;
@@ -33,7 +34,7 @@ import static dk.cloudcreate.essentials.components.eventsourced.eventstore.postg
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
-class OrderAggregateRootRepositoryTest {
+class OrderAggregateRootRepositoryIT {
     public static final EventMetaData META_DATA = EventMetaData.of("Key1", "Value1", "Key2", "Value2");
     public static final AggregateType ORDERS    = AggregateType.of("Orders");
 
@@ -101,7 +102,7 @@ class OrderAggregateRootRepositoryTest {
     }
 
     @Test
-    void persist_and_load_Order_aggregate() {
+    void persist_and_load_Order_aggregatex() {
         // Given
         var orderId         = OrderId.of("beed77fb-d911-1111-9c48-03ed5bfe8f89");
         var customerId      = CustomerId.of("Test-Customer-Id-10");

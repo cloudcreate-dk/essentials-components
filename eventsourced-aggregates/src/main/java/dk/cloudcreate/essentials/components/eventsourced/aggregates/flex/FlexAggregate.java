@@ -20,14 +20,19 @@ import static dk.cloudcreate.essentials.shared.FailFast.requireNonNull;
  *     public record OrderAdded(OrderId orderId, CustomerId orderingCustomerId, long orderNumber) {
  *     }
  *
- *     public record OrderAccepted(OrderId orderId) {
+ *     public static class OrderAccepted {
+ *         public final OrderId orderId;
+ *
+ *         public OrderAccepted(OrderId orderId) {
+ *             this.orderId = orderId;
+ *         }
  *     }
  * }</pre>
  * <strong>New Aggregate instance</strong><br/>
- * The method that creates a new aggregate instance my be a static method that returns a {@link EventsToPersist}
+ * The method that creates a new aggregate instance may be a static method that returns a {@link EventsToPersist}
  * instance:
  * <pre>{@code
- * unitOfWorkController.usingUnitOfWork(unitOfWorkController -> {
+ * unitOfWorkFactory.usingUnitOfWork(unitOfWork -> {
  *      var eventsToPersist = Order.createNewOrder(orderId, CustomerId.random(), 123);
  *      repository.persist(eventsToPersist);
  *  });
@@ -47,12 +52,21 @@ import static dk.cloudcreate.essentials.shared.FailFast.requireNonNull;
  * Each individual <b>command</b> method MUST also return a {@link EventsToPersist} instance
  * that can will usually be use in in a call to {@link FlexAggregateRepository#persist(EventsToPersist)}
  * <pre>{@code
- * EasyAggregateRepository<OrderId, Order> repository = EasyAggregateRepository.from(eventStores,
- *                                                                                 unitOfWorkController,
- *                                                                                 OrderId.class,
- *                                                                                 Order.class
- *                                                                                  );
- * unitOfWorkController.usingUnitOfWork(unitOfWorkController -> {
+ * FlexAggregateRepository<OrderId, Order> repository =
+ *                   FlexAggregateRepository.from(
+ *                        eventStores,
+ *                        standardSingleTenantConfigurationUsingJackson(
+ *                             AggregateType.of("Orders"),
+ *                             createObjectMapper(),
+ *                             AggregateIdSerializer.serializerFor(OrderId.class),
+ *                             IdentifierColumnType.UUID,
+ *                             JSONColumnType.JSONB),
+ *                         unitOfWorkFactory,
+ *                         OrderId.class,
+ *                         Order.class
+ *                        );
+ *
+ * unitOfWorkFactory.usingUnitOfWork(unitOfWork -> {
  *      var order = repository.load(orderId);
  *      var eventsToPersist = order.accept();
  *      repository.persist(eventsToPersist);
@@ -72,9 +86,9 @@ import static dk.cloudcreate.essentials.shared.FailFast.requireNonNull;
  * <strong>Command method chaining</strong><br/>
  * Command methods can be <b>chained</b> like this:
  * <pre>{@code
- *         unitOfWorkController.usingUnitOfWork(unitOfWorkController -> {
+ *         unitOfWorkFactory.usingUnitOfWork(unitOfWork -> {
  *             var eventsToPersist = Order.createNewOrder(orderId, CustomerId.random(), 123);
- *             eventsToPersist = eventsToPersist.append(new Order().loadFromHistory(eventsToPersist).addProduct(productId, 10));
+ *             eventsToPersist = eventsToPersist.append(new Order().rehydrate(eventsToPersist).addProduct(productId, 10));
  *             repository.persist(eventsToPersist);
  *         });
  * }</pre>
@@ -157,6 +171,10 @@ public abstract class FlexAggregate<ID, AGGREGATE_TYPE extends FlexAggregate<ID,
     private boolean    hasBeenRehydrated;
 
     public FlexAggregate() {
+        initialize();
+    }
+
+    protected void initialize() {
         invoker = new PatternMatchingMethodInvoker<>(this,
                                                      new SingleArgumentAnnotatedMethodPatternMatcher<>(EventHandler.class,
                                                                                                        Object.class),
@@ -203,7 +221,7 @@ public abstract class FlexAggregate<ID, AGGREGATE_TYPE extends FlexAggregate<ID,
      * @return the aggregate instance
      */
     public AGGREGATE_TYPE rehydrate(ID aggregateId, Stream<?> historicEvents) {
-        this.aggregateId = requireNonNull(aggregateId, "You must provide an aggregateId when initializing an EasyAggregate from a list of previous events");
+        this.aggregateId = requireNonNull(aggregateId, "You must provide an aggregateId when initializing a FlexAggregate from a list of previous events");
         requireNonNull(historicEvents, "You must provide a list of historic events");
 
         // Must be initialized here to ensure any eventOrderOfLastAppliedHistoricEvent++ will set the correct event order
@@ -250,7 +268,7 @@ public abstract class FlexAggregate<ID, AGGREGATE_TYPE extends FlexAggregate<ID,
     private void applyHistoricEvent(Object event) {
         requireNonNull(event, "You must supply an event");
         applyHistoricEventToTheAggregate(event);
-        eventOrderOfLastRehydratedEvent.increaseAndGet();
+        eventOrderOfLastRehydratedEvent = eventOrderOfLastRehydratedEvent.increaseAndGet();
     }
 
     /**
@@ -262,7 +280,11 @@ public abstract class FlexAggregate<ID, AGGREGATE_TYPE extends FlexAggregate<ID,
      * @param event the event to apply to the aggregate
      */
     protected void applyHistoricEventToTheAggregate(Object event) {
-        invoker.invoke(event, _event -> {
+        if (invoker == null) {
+            // Instance was created by Objenesis
+            initialize();
+        }
+        invoker.invoke(event, unmatchedEvent -> {
             // Ignore unmatched events as Aggregates don't necessarily need handle every event
         });
     }

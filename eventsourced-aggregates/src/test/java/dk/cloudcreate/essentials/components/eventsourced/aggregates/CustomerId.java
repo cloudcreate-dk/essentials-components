@@ -1,4 +1,4 @@
-package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic;
+package dk.cloudcreate.essentials.components.eventsourced.aggregates;
 
 import dk.cloudcreate.essentials.types.CharSequenceType;
 

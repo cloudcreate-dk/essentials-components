@@ -1,5 +1,6 @@
 package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.objenesis.state;
 
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.*;
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.AggregateRootInstanceFactory.DefaultConstructorAggregateRootInstanceFactory;
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.objenesis.NoDefaultConstructorOrderEvents.*;

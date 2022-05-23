@@ -1,6 +1,6 @@
 package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.objenesis;
 
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.EventHandler;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.*;
 
 import java.util.*;

@@ -4,6 +4,7 @@ import dk.cloudcreate.essentials.components.common.transaction.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.persistence.AggregateTypeConfiguration;
+import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.transaction.EventStoreUnitOfWorkFactory;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.EventOrder;
 import dk.cloudcreate.essentials.shared.reflection.Reflector;
 import dk.cloudcreate.essentials.types.LongRange;
@@ -15,21 +16,29 @@ import static dk.cloudcreate.essentials.shared.FailFast.requireNonNull;
 
 /**
  * Opinionated {@link FlexAggregate} Repository that's built to persist and load a specific {@link FlexAggregate} type in combination
- * with {@link EventStore}, {@link UnitOfWorkFactory} and a {@link FlexAggregateRepository}.<br>
+ * with {@link EventStore}, {@link EventStoreUnitOfWorkFactory} and a {@link FlexAggregateRepository}.<br>
  * <p>
  * Here's how to create an {@link FlexAggregateRepository} instance that can persist an {@link FlexAggregate}
  * of type <code>Order</code> which has an aggregate id of type <code>OrderId</code>:
  * <pre>{@code
- * EasyAggregateRepository<OrderId, Order> repository = EasyAggregateRepository.from(eventStores,
- *                                                                                 unitOfWorkController,
- *                                                                                 OrderId.class,
- *                                                                                 Order.class
- *                                                                                  );
+ * FlexAggregateRepository<OrderId, Order> repository =
+ *      FlexAggregateRepository.from(
+ *                eventStores,
+ *                standardSingleTenantConfigurationUsingJackson(
+ *                     AggregateType.of("Orders"),
+ *                     createObjectMapper(),
+ *                     AggregateIdSerializer.serializerFor(OrderId.class),
+ *                     IdentifierColumnType.UUID,
+ *                     JSONColumnType.JSONB),
+ *                 unitOfWorkFactory,
+ *                 OrderId.class,
+ *                 Order.class
+ *                );
  * }</pre>
  * Here's a typical usage pattern for when you want to persist an new {@link FlexAggregate} instance
  * (i.e. the {@link EventStore} doesn't contain an events related to the given Aggregate id):
  * <pre>{@code
- * unitOfWorkController.usingUnitOfWork(unitOfWorkController -> {
+ * unitOfWorkFactory.usingUnitOfWork(unitOfWork -> {
  *      var eventsToPersist = Order.createNewOrder(orderId, CustomerId.random(), 123);
  *      repository.persist(eventsToPersist);
  *  });
@@ -37,7 +46,7 @@ import static dk.cloudcreate.essentials.shared.FailFast.requireNonNull;
  * Here's the typical usage pattern for {@link FlexAggregateRepository} for already existing {@link FlexAggregate}
  * instance (i.e. an instance that has events in the {@link EventStore}):
  * <pre>{@code
- * unitOfWorkController.usingUnitOfWork(unitOfWorkController -> {
+ * unitOfWorkFactory.usingUnitOfWork(unitOfWork -> {
  *      var order = repository.load(orderId);
  *      var eventsToPersist = order.accept();
  *      repository.persist(eventsToPersist);
@@ -51,21 +60,21 @@ import static dk.cloudcreate.essentials.shared.FailFast.requireNonNull;
  */
 public interface FlexAggregateRepository<ID, AGGREGATE_TYPE extends FlexAggregate<ID, AGGREGATE_TYPE>> {
     /**
-     * @param <ID>                     the aggregate ID type
-     * @param <AGGREGATE_TYPE>         the concrete aggregate type  (MUST be a subtype of {@link FlexAggregate})
-     * @param eventStore               The {@link EventStore} instance to use
-     * @param eventStreamConfiguration the configuration for the event stream that will contain all the events related to the aggregate type
-     * @param unitOfWorkFactory        The factory that provides {@link UnitOfWork}'s
-     * @param aggregateIdType          the concrete aggregate ID type
-     * @param aggregateType            the concrete aggregate type (MUST be a subtype of {@link FlexAggregate})
+     * @param <ID>                       the aggregate ID type
+     * @param <AGGREGATE_TYPE>           the concrete aggregate type  (MUST be a subtype of {@link FlexAggregate})
+     * @param eventStore                 The {@link EventStore} instance to use
+     * @param aggregateTypeConfiguration the configuration for the event stream that will contain all the events related to the aggregate type
+     * @param unitOfWorkFactory          The factory that provides {@link UnitOfWork}'s
+     * @param aggregateIdType            the concrete aggregate ID type
+     * @param aggregateType              the concrete aggregate type (MUST be a subtype of {@link FlexAggregate})
      * @return a repository instance that can be used load, add and query aggregates of type <code>aggregateType</code>
      */
     static <CONFIG extends AggregateTypeConfiguration, ID, AGGREGATE_TYPE extends FlexAggregate<ID, AGGREGATE_TYPE>> FlexAggregateRepository<ID, AGGREGATE_TYPE> from(EventStore<CONFIG> eventStore,
-                                                                                                                                                                      CONFIG eventStreamConfiguration,
-                                                                                                                                                                      UnitOfWorkFactory unitOfWorkFactory,
+                                                                                                                                                                      CONFIG aggregateTypeConfiguration,
+                                                                                                                                                                      EventStoreUnitOfWorkFactory unitOfWorkFactory,
                                                                                                                                                                       Class<ID> aggregateIdType,
                                                                                                                                                                       Class<AGGREGATE_TYPE> aggregateType) {
-        return new DefaultFlexAggregateRepository<>(eventStore, eventStreamConfiguration, unitOfWorkFactory, aggregateType, aggregateIdType);
+        return new DefaultFlexAggregateRepository<>(eventStore, aggregateTypeConfiguration, unitOfWorkFactory, aggregateType, aggregateIdType);
     }
 
     // -------------------------------------------------------------------------------------------------------------------------------------------------
@@ -178,32 +187,32 @@ public interface FlexAggregateRepository<ID, AGGREGATE_TYPE extends FlexAggregat
 
         private final EventStore<?>                                      eventStore;
         private final Class<AGGREGATE_TYPE>                              aggregateRootImplementationType;
-        private final Class<ID>                  aggregateIdType;
-        private final AggregateTypeConfiguration eventStreamConfiguration;
-        private final UnitOfWorkFactory          unitOfWorkFactory;
-        private final EasyAggregateRepositoryUnitOfWorkLifecycleCallback unitOfWorkCallback;
+        private final Class<ID>                                          aggregateIdType;
+        private final AggregateTypeConfiguration                         eventStreamConfiguration;
+        private final EventStoreUnitOfWorkFactory                        unitOfWorkFactory;
+        private final FlexAggregateRepositoryUnitOfWorkLifecycleCallback unitOfWorkCallback;
 
         /**
          * Create an {@link FlexAggregateRepository}
          *
          * @param eventStore                      the event store that can load and persist events related to the aggregateType
-         * @param eventStreamConfiguration        the configuration for the event stream that will contain all the events related to the aggregate type
+         * @param aggregateTypeConfiguration      the configuration for the event stream that will contain all the events related to the aggregate type
          * @param unitOfWorkFactory               The factory that provides {@link UnitOfWork}'s
          * @param aggregateRootImplementationType the concrete aggregate type (MUST be a subtype of {@link FlexAggregate})
          * @param aggregateIdType                 the concrete aggregate ID type
          */
         private <CONFIG extends AggregateTypeConfiguration> DefaultFlexAggregateRepository(EventStore<CONFIG> eventStore,
-                                                                                           CONFIG eventStreamConfiguration,
-                                                                                           UnitOfWorkFactory unitOfWorkFactory,
+                                                                                           CONFIG aggregateTypeConfiguration,
+                                                                                           EventStoreUnitOfWorkFactory unitOfWorkFactory,
                                                                                            Class<AGGREGATE_TYPE> aggregateRootImplementationType,
                                                                                            Class<ID> aggregateIdType) {
             this.eventStore = requireNonNull(eventStore, "You must supply an EventStore instance");
-            this.eventStreamConfiguration = requireNonNull(eventStreamConfiguration, "You must supply an eventStreamConfiguration");
+            this.eventStreamConfiguration = requireNonNull(aggregateTypeConfiguration, "You must supply an aggregateTypeConfiguration");
             this.unitOfWorkFactory = requireNonNull(unitOfWorkFactory, "You must supply a UnitOfWorkFactory instance");
             this.aggregateRootImplementationType = requireNonNull(aggregateRootImplementationType, "You must supply an aggregateImplementationType");
             this.aggregateIdType = requireNonNull(aggregateIdType, "You must supply an aggregateIdType");
-            this.unitOfWorkCallback = new EasyAggregateRepositoryUnitOfWorkLifecycleCallback();
-            eventStore.addAggregateTypeConfiguration(eventStreamConfiguration);
+            this.unitOfWorkCallback = new FlexAggregateRepositoryUnitOfWorkLifecycleCallback();
+            eventStore.addAggregateTypeConfiguration(aggregateTypeConfiguration);
         }
 
         /**
@@ -220,7 +229,7 @@ public interface FlexAggregateRepository<ID, AGGREGATE_TYPE extends FlexAggregat
 
         @Override
         public String toString() {
-            return "EasyAggregateRepository{" +
+            return "FlexAggregateRepository{" +
                     "aggregateType=" + aggregateType() +
                     ", aggregateIdType=" + aggregateIdType() +
                     ", aggregateImplementationType=" + aggregateRootImplementationType().getName() +
@@ -241,7 +250,7 @@ public interface FlexAggregateRepository<ID, AGGREGATE_TYPE extends FlexAggregat
                 var persistedEventsStream = potentialPersistedEventStream.get();
                 if (expectedLatestEventOrder.isPresent()) {
                     PersistedEvent lastEventPersisted = persistedEventsStream.eventList().get(persistedEventsStream.eventList().size() - 1);
-                    if (!lastEventPersisted.eventOrder().equals(expectedLatestEventOrder.get())) {
+                    if (lastEventPersisted.eventOrder().longValue() != expectedLatestEventOrder.get()) {
                         log.trace("Found {} with id '{}' but expectedLatestEventOrder {} != actualLatestEventOrder {}",
                                   aggregateRootImplementationType.getName(),
                                   aggregateId,
@@ -249,7 +258,7 @@ public interface FlexAggregateRepository<ID, AGGREGATE_TYPE extends FlexAggregat
                                   lastEventPersisted.eventOrder());
                         throw new OptimisticFlexAggregateLoadException(aggregateId,
                                                                        aggregateRootImplementationType,
-                                                                       expectedLatestEventOrder.map(value -> EventOrder.of(value)).get(),
+                                                                       expectedLatestEventOrder.map(EventOrder::of).get(),
                                                                        lastEventPersisted.eventOrder());
                     }
 
@@ -283,7 +292,7 @@ public interface FlexAggregateRepository<ID, AGGREGATE_TYPE extends FlexAggregat
          * The {@link UnitOfWorkLifecycleCallback} that's responsible for persisting {@link EventsToPersist} that were a side effect of command methods invoked on
          * {@link FlexAggregate} instances during the {@link UnitOfWork} - see {@link FlexAggregateRepository#persist(EventsToPersist)}
          */
-        private class EasyAggregateRepositoryUnitOfWorkLifecycleCallback implements UnitOfWorkLifecycleCallback<EventsToPersist<ID>> {
+        private class FlexAggregateRepositoryUnitOfWorkLifecycleCallback implements UnitOfWorkLifecycleCallback<EventsToPersist<ID>> {
 
             @Override
             public void beforeCommit(UnitOfWork unitOfWork, List<EventsToPersist<ID>> associatedResources) {
