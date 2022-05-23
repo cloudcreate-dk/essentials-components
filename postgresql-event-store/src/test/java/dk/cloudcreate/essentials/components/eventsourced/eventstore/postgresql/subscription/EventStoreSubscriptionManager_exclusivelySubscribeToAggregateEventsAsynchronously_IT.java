@@ -314,7 +314,7 @@ class EventStoreSubscriptionManager_exclusivelySubscribeToAggregateEventsAsynchr
                                                  .reduce(Integer::sum)
                                                  .get();
         System.out.println("Total number of Order Events: " + totalNumberOfOrderEvents);
-        Awaitility.waitAtMost(Duration.ofSeconds(4))
+        Awaitility.waitAtMost(Duration.ofSeconds(5))
                   .untilAsserted(() -> assertThat(orderEventsReceived.size()).isEqualTo(totalNumberOfOrderEvents));
         assertThat(orderEventsReceived.stream().filter(persistedEvent -> !persistedEvent.aggregateType().equals(ORDERS)).findAny()).isEmpty();
         assertThat(orderEventsReceived.stream()
@@ -371,7 +371,7 @@ class EventStoreSubscriptionManager_exclusivelySubscribeToAggregateEventsAsynchr
                 }
                 if (count == 80) {
                     ordersSubscription.set(createOrderSubscription(orderEventsReceived));
-                    Awaitility.waitAtMost(Duration.ofSeconds(4))
+                    Awaitility.waitAtMost(Duration.ofSeconds(5))
                               .untilAsserted(() -> assertThat(ordersSubscription.get().isActive()).isTrue());
                     assertThat(ordersSubscription.get().isStarted()).isTrue();
                     assertThat(eventStoreSubscriptionManagerNode1.hasSubscription(ordersSubscription.get())).isTrue();
@@ -400,7 +400,7 @@ class EventStoreSubscriptionManager_exclusivelySubscribeToAggregateEventsAsynchr
                                                  .reduce(Integer::sum)
                                                  .get();
         System.out.println("Total number of Order Events: " + totalNumberOfOrderEvents);
-        Awaitility.waitAtMost(Duration.ofSeconds(4))
+        Awaitility.waitAtMost(Duration.ofSeconds(5))
                   .untilAsserted(() -> assertThat(orderEventsReceived.size()).isEqualTo(totalNumberOfOrderEvents));
         assertThat(orderEventsReceived.stream().filter(persistedEvent -> !persistedEvent.aggregateType().equals(ORDERS)).findAny()).isEmpty();
         assertThat(orderEventsReceived.stream()

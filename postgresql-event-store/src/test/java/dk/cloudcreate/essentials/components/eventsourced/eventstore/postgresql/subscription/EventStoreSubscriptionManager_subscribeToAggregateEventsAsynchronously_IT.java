@@ -286,7 +286,7 @@ class EventStoreSubscriptionManager_subscribeToAggregateEventsAsynchronously_IT 
                                                  .reduce(Integer::sum)
                                                  .get();
         System.out.println("Total number of Order Events: " + totalNumberOfOrderEvents);
-        Awaitility.waitAtMost(Duration.ofSeconds(4))
+        Awaitility.waitAtMost(Duration.ofSeconds(5))
                   .untilAsserted(() -> assertThat(orderEventsReceived.size()).isEqualTo(totalNumberOfOrderEvents));
         assertThat(orderEventsReceived.stream().filter(persistedEvent -> !persistedEvent.aggregateType().equals(ORDERS)).findAny()).isEmpty();
         assertThat(orderEventsReceived.stream()
@@ -371,7 +371,7 @@ class EventStoreSubscriptionManager_subscribeToAggregateEventsAsynchronously_IT 
                                                  .reduce(Integer::sum)
                                                  .get();
         System.out.println("Total number of Order Events: " + totalNumberOfOrderEvents);
-        Awaitility.waitAtMost(Duration.ofSeconds(4))
+        Awaitility.waitAtMost(Duration.ofSeconds(5))
                   .untilAsserted(() -> assertThat(orderEventsReceived.size()).isEqualTo(totalNumberOfOrderEvents));
         assertThat(orderEventsReceived.stream().filter(persistedEvent -> !persistedEvent.aggregateType().equals(ORDERS)).findAny()).isEmpty();
         assertThat(orderEventsReceived.stream()
