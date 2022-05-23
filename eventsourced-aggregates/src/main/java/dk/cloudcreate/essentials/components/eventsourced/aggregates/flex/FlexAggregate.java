@@ -227,7 +227,7 @@ public abstract class FlexAggregate<ID, AGGREGATE_TYPE extends FlexAggregate<ID,
         // Must be initialized here to ensure any eventOrderOfLastAppliedHistoricEvent++ will set the correct event order
         eventOrderOfLastRehydratedEvent = EventsToPersist.NO_EVENTS_HAVE_BEEN_PERSISTED;
         historicEvents.forEach(this::applyHistoricEvent);
-        hasBeenRehydrated = true;
+
         return (AGGREGATE_TYPE) this;
     }
 
@@ -268,6 +268,7 @@ public abstract class FlexAggregate<ID, AGGREGATE_TYPE extends FlexAggregate<ID,
     private void applyHistoricEvent(Object event) {
         requireNonNull(event, "You must supply an event");
         applyHistoricEventToTheAggregate(event);
+        hasBeenRehydrated = true;
         eventOrderOfLastRehydratedEvent = eventOrderOfLastRehydratedEvent.increaseAndGet();
     }
 
