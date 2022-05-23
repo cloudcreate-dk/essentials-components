@@ -1,15 +1,14 @@
-package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.objenesis;
+package dk.cloudcreate.essentials.components.eventsourced.aggregates.flex;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import dk.cloudcreate.essentials.components.common.transaction.UnitOfWork;
+import dk.cloudcreate.essentials.components.common.transaction.*;
 import dk.cloudcreate.essentials.components.common.types.*;
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.AggregateRootRepository;
-import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.*;
+import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.PostgresqlEventStore;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.bus.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.persistence.*;
@@ -31,13 +30,11 @@ import java.time.*;
 import java.util.*;
 import java.util.function.Consumer;
 
-import static dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.AggregateRootInstanceFactory.objenesisAggregateRootFactory;
 import static dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.persistence.table_per_aggregate_type.SeparateTablePerAggregateTypeConfiguration.standardSingleTenantConfigurationUsingJackson;
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
 
-@DisplayName("Objenesis OrderAggregateRootRepositoryTest")
 @Testcontainers
-class OrderAggregateRootRepositoryTest {
+public class FlexAggregateRepositoryIT {
     public static final EventMetaData META_DATA = EventMetaData.of("Key1", "Value1", "Key2", "Value2");
     public static final AggregateType ORDERS    = AggregateType.of("Orders");
 
@@ -52,7 +49,7 @@ class OrderAggregateRootRepositoryTest {
                                                                                                            .withUsername("test-user")
                                                                                                            .withPassword("secret-password");
 
-    private AggregateRootRepository<OrderId, Order> ordersRepository;
+    private FlexAggregateRepository<OrderId, Order> ordersRepository;
     private RecordingLocalEventBusConsumer          recordingLocalEventBusConsumer;
     private Disposable                              persistedEventFlux;
     private List<PersistedEvent>                    asynchronousOrderEventsReceived;
@@ -75,13 +72,14 @@ class OrderAggregateRootRepositoryTest {
         recordingLocalEventBusConsumer = new RecordingLocalEventBusConsumer();
         eventStore.localEventBus().addSyncSubscriber(recordingLocalEventBusConsumer);
 
-        ordersRepository = AggregateRootRepository.from(eventStore,
+        ordersRepository = FlexAggregateRepository.from(eventStore,
                                                         standardSingleTenantConfigurationUsingJackson(ORDERS,
                                                                                                       createObjectMapper(),
                                                                                                       AggregateIdSerializer.serializerFor(OrderId.class),
                                                                                                       IdentifierColumnType.UUID,
                                                                                                       JSONColumnType.JSONB),
-                                                        objenesisAggregateRootFactory(),
+                                                        unitOfWorkFactory,
+                                                        OrderId.class,
                                                         Order.class);
 
         asynchronousOrderEventsReceived = new ArrayList<>();
@@ -104,35 +102,35 @@ class OrderAggregateRootRepositoryTest {
         }
     }
 
+    @DisplayName("Verify we can persist an Aggregate and load it again")
     @Test
-    void persist_and_load_Order_aggregate() {
+    void persistAndLoadAggregate() {
         // Given
-        var orderId         = OrderId.of("beed77fb-d911-1111-9c48-03ed5bfe8f89");
-        var customerId      = CustomerId.of("Test-Customer-Id-10");
-        var orderNumber     = 1234;
-        var productId       = ProductId.of("ProductId-1");
-        var productQuantity = 2;
+        var orderId    = OrderId.of("0784e5b6-9b27-4236-8797-480c117b0599");
+        var productId  = ProductId.of("7397830b-270c-4d0b-838b-dfa0b4d9d116");
+        var customerId = CustomerId.of("bc049499-f338-46a5-85fe-26d4da26faff");
 
-        // And
-        var order = new Order(orderId, customerId, orderNumber);
-        order.addProduct(productId, productQuantity);
+        unitOfWorkFactory.usingUnitOfWork(unitOfWorkController -> {
+            var eventsToPersist = Order.createNewOrder(orderId, customerId, 123);
 
-        // Check state change
-        assertThat(order.uncommittedChanges().size()).isEqualTo(2);
-        var uncommittedEvents = new ArrayList<>(order.uncommittedChanges());
-        assertThat((CharSequence) order.aggregateId()).isEqualTo(orderId);
-        assertThat(order.productAndQuantity.get(productId)).isEqualTo(productQuantity);
-        assertThat(order.accepted).isFalse();
-
-        // When
-        unitOfWorkFactory.usingUnitOfWork(unitOfWork -> {
-            ordersRepository.persist(order);
+            eventsToPersist = eventsToPersist.append(new Order().rehydrate(eventsToPersist).addProduct(productId, 10));
+            ordersRepository.persist(eventsToPersist);
         });
-
-        // Then
-        assertThat(order.uncommittedChanges().size()).isEqualTo(0);
+        and:
+        // Events persisted were published on the Local EventBus
         assertThat(recordingLocalEventBusConsumer.beforeCommitPersistedEvents.size()).isEqualTo(2);
+        assertThat(recordingLocalEventBusConsumer.beforeCommitPersistedEvents.get(0).aggregateId()).isEqualTo(orderId);
+        assertThat((CharSequence) recordingLocalEventBusConsumer.beforeCommitPersistedEvents.get(0).aggregateType()).isEqualTo(aggregateType);
+        assertThat(recordingLocalEventBusConsumer.beforeCommitPersistedEvents.get(0).event().getEventTypeOrName().getValue()).isEqualTo(Order.OrderAdded.class.getName());
+        assertThat(recordingLocalEventBusConsumer.beforeCommitPersistedEvents.get(1).aggregateId()).isEqualTo(orderId);
+        assertThat(recordingLocalEventBusConsumer.beforeCommitPersistedEvents.get(1).event().getEventTypeOrName().getValue()).isEqualTo(Order.ProductAddedToOrder.class.getName());
         assertThat(recordingLocalEventBusConsumer.afterCommitPersistedEvents.size()).isEqualTo(2);
+        assertThat(recordingLocalEventBusConsumer.afterCommitPersistedEvents.get(0).aggregateId()).isEqualTo(orderId);
+        assertThat(recordingLocalEventBusConsumer.afterCommitPersistedEvents.get(0).event().getEventTypeOrName().getValue()).isEqualTo(Order.OrderAdded.class.getName());
+        assertThat((CharSequence) recordingLocalEventBusConsumer.afterCommitPersistedEvents.get(0).aggregateType()).isEqualTo(aggregateType);
+        assertThat(recordingLocalEventBusConsumer.afterCommitPersistedEvents.get(1).aggregateId()).isEqualTo(orderId);
+        assertThat(recordingLocalEventBusConsumer.afterCommitPersistedEvents.get(1).event().getEventTypeOrName().getValue()).isEqualTo(Order.ProductAddedToOrder.class.getName());
+
         Awaitility.waitAtMost(Duration.ofMillis(300))
                   .untilAsserted(() -> assertThat(asynchronousOrderEventsReceived.size()).isEqualTo(2));
 
@@ -151,10 +149,9 @@ class OrderAggregateRootRepositoryTest {
         assertThat(asynchronousOrderEventsReceived.get(0).globalEventOrder()).isEqualTo(GlobalEventOrder.of(1));
         assertThat(asynchronousOrderEventsReceived.get(0).timestamp()).isBefore(OffsetDateTime.now());
         assertThat(asynchronousOrderEventsReceived.get(0).event().getEventName()).isEmpty();
-        assertThat(asynchronousOrderEventsReceived.get(0).event().getEventType()).isEqualTo(Optional.of(EventType.of(NoDefaultConstructorOrderEvents.OrderAdded.class)));
-        assertThat(asynchronousOrderEventsReceived.get(0).event().getEventTypeOrNamePersistenceValue()).isEqualTo(EventType.of(NoDefaultConstructorOrderEvents.OrderAdded.class).toString());
-        assertThat(asynchronousOrderEventsReceived.get(0).event().getJsonDeserialized().get()).usingRecursiveComparison().isEqualTo(uncommittedEvents.get(0));
-        assertThat(asynchronousOrderEventsReceived.get(0).event().getJson()).isEqualTo("{\"eventOrder\": 0, \"aggregateId\": \"beed77fb-d911-1111-9c48-03ed5bfe8f89\", \"orderNumber\": 1234, \"orderingCustomerId\": \"Test-Customer-Id-10\"}");
+        assertThat(asynchronousOrderEventsReceived.get(0).event().getEventType()).isEqualTo(Optional.of(EventType.of(Order.OrderAdded.class)));
+        assertThat(asynchronousOrderEventsReceived.get(0).event().getEventTypeOrNamePersistenceValue()).isEqualTo(EventType.of(Order.OrderAdded.class).toString());
+        assertThat(asynchronousOrderEventsReceived.get(0).event().getJson()).isEqualTo("{\"orderId\": \"0784e5b6-9b27-4236-8797-480c117b0599\", \"orderNumber\": 123, \"orderingCustomerId\": \"bc049499-f338-46a5-85fe-26d4da26faff\"}");
         assertThat(asynchronousOrderEventsReceived.get(0).metaData().getJson()).contains("\"Key1\": \"Value1\"");
         assertThat(asynchronousOrderEventsReceived.get(0).metaData().getJson()).contains("\"Key2\": \"Value2\"");
         assertThat(asynchronousOrderEventsReceived.get(0).metaData().getJavaType()).isEqualTo(Optional.of(EventMetaData.class.getName()));
@@ -170,10 +167,9 @@ class OrderAggregateRootRepositoryTest {
         assertThat(asynchronousOrderEventsReceived.get(1).globalEventOrder()).isEqualTo(GlobalEventOrder.of(2));
         assertThat(asynchronousOrderEventsReceived.get(1).timestamp()).isBefore(OffsetDateTime.now());
         assertThat(asynchronousOrderEventsReceived.get(1).event().getEventName()).isEmpty();
-        assertThat(asynchronousOrderEventsReceived.get(1).event().getEventType()).isEqualTo(Optional.of(EventType.of(NoDefaultConstructorOrderEvents.ProductAddedToOrder.class)));
-        assertThat(asynchronousOrderEventsReceived.get(1).event().getEventTypeOrNamePersistenceValue()).isEqualTo(EventType.of(NoDefaultConstructorOrderEvents.ProductAddedToOrder.class).toString());
-        assertThat(asynchronousOrderEventsReceived.get(1).event().getJsonDeserialized().get()).usingRecursiveComparison().isEqualTo(uncommittedEvents.get(1));
-        assertThat(asynchronousOrderEventsReceived.get(1).event().getJson()).isEqualTo("{\"quantity\": 2, \"productId\": \"ProductId-1\", \"eventOrder\": 1, \"aggregateId\": \"beed77fb-d911-1111-9c48-03ed5bfe8f89\"}");
+        assertThat(asynchronousOrderEventsReceived.get(1).event().getEventType()).isEqualTo(Optional.of(EventType.of(Order.ProductAddedToOrder.class)));
+        assertThat(asynchronousOrderEventsReceived.get(1).event().getEventTypeOrNamePersistenceValue()).isEqualTo(EventType.of(Order.ProductAddedToOrder.class).toString());
+        assertThat(asynchronousOrderEventsReceived.get(1).event().getJson()).isEqualTo("{\"orderId\": \"0784e5b6-9b27-4236-8797-480c117b0599\", \"quantity\": 10, \"productId\": \"7397830b-270c-4d0b-838b-dfa0b4d9d116\"}");
         assertThat(asynchronousOrderEventsReceived.get(1).metaData().getJson()).contains("\"Key1\": \"Value1\"");
         assertThat(asynchronousOrderEventsReceived.get(1).metaData().getJson()).contains("\"Key2\": \"Value2\"");
         assertThat(asynchronousOrderEventsReceived.get(1).metaData().getJavaType()).isEqualTo(Optional.of(EventMetaData.class.getName()));
@@ -181,85 +177,101 @@ class OrderAggregateRootRepositoryTest {
         assertThat(asynchronousOrderEventsReceived.get(1).causedByEventId()).isEqualTo(Optional.of(eventMapper.causedByEventId));
         assertThat(asynchronousOrderEventsReceived.get(1).correlationId()).isEqualTo(Optional.of(eventMapper.correlationId));
 
-        var loadedOrder = unitOfWorkFactory.withUnitOfWork(unitOfWork -> ordersRepository.load(orderId));
-        assertThat(loadedOrder).isNotNull();
-        assertThat((CharSequence) loadedOrder.aggregateId()).isEqualTo(orderId);
-        assertThat(loadedOrder.productAndQuantity.get(productId)).isEqualTo(productQuantity);
-        assertThat(loadedOrder.accepted).isFalse();
-    }
-
-    @Test
-    void persist_load_and_persist_Order() {
-        // Given
-        var orderId         = OrderId.of("beed77fb-d911-1111-9c48-03ed5bfe8f89");
-        var customerId      = CustomerId.of("Test-Customer-Id-10");
-        var orderNumber     = 1234;
-        var productId       = ProductId.of("ProductId-1");
-        var productQuantity = 2;
-
-        // And
-        var order = new Order(orderId, customerId, orderNumber);
-        order.addProduct(productId, productQuantity);
-        unitOfWorkFactory.usingUnitOfWork(unitOfWork -> {
-            ordersRepository.persist(order);
-        });
-
-        Awaitility.waitAtMost(Duration.ofMillis(300))
-                  .untilAsserted(() -> assertThat(asynchronousOrderEventsReceived.size()).isEqualTo(2));
-        asynchronousOrderEventsReceived.clear();
-        recordingLocalEventBusConsumer.clear();
-
-        // When modifying a loaded aggregate within a unitofwork then the changes are automatically persisted
-        var uncommittedEvents = new ArrayList<>();
-        var changedOrder = unitOfWorkFactory.withUnitOfWork(unitOfWork -> {
-            var loadedOrder = ordersRepository.load(orderId);
-            assertThat(loadedOrder.uncommittedChanges().size()).isEqualTo(0);
-            assertThat((CharSequence) loadedOrder.aggregateId()).isEqualTo(orderId);
-            assertThat(loadedOrder.productAndQuantity.get(productId)).isEqualTo(productQuantity);
-            assertThat(loadedOrder.accepted).isFalse();
-
-            loadedOrder.accept();
-
-            assertThat(loadedOrder.uncommittedChanges().size()).isEqualTo(1);
-            uncommittedEvents.addAll(loadedOrder.uncommittedChanges());
-            assertThat((CharSequence) loadedOrder.aggregateId()).isEqualTo(orderId);
-            assertThat(loadedOrder.productAndQuantity.get(productId)).isEqualTo(productQuantity);
-            assertThat(loadedOrder.accepted).isTrue();
-
-            return loadedOrder;
-        });
+        // When
+        var result = unitOfWorkFactory.withUnitOfWork(uow -> ordersRepository.load(orderId));
 
         // Then
-        assertThat(changedOrder.uncommittedChanges().size()).isEqualTo(0);
-        assertThat(recordingLocalEventBusConsumer.beforeCommitPersistedEvents.size()).isEqualTo(1);
-        assertThat(recordingLocalEventBusConsumer.afterCommitPersistedEvents.size()).isEqualTo(1);
-        Awaitility.waitAtMost(Duration.ofMillis(300))
-                  .untilAsserted(() -> assertThat(asynchronousOrderEventsReceived.size()).isEqualTo(1));
+        assertThat(result.aggregateId().toString()).isEqualTo(orderId.toString());
+        assertThat(result.productAndQuantity.get(productId)).isEqualTo(10);
+        assertThat(result.eventOrderOfLastAppliedHistoricEvent()).isEqualTo(EventOrder.of(1));
+    }
 
-        // And The events received are the same
-        assertThat(recordingLocalEventBusConsumer.beforeCommitPersistedEvents)
-                .isEqualTo(recordingLocalEventBusConsumer.afterCommitPersistedEvents);
-        assertThat(recordingLocalEventBusConsumer.beforeCommitPersistedEvents)
-                .isEqualTo(asynchronousOrderEventsReceived);
+    @DisplayName("Load with correct expectedLatestEventOrder")
+    @Test
+    void loadBasedOnExpectedLatestEventOrder() {
+        // Given
+        var orderId   = OrderId.random();
+        var productId = ProductId.random();
 
-        assertThat((CharSequence) asynchronousOrderEventsReceived.get(0).eventId()).isNotNull();
-        assertThat((CharSequence) asynchronousOrderEventsReceived.get(0).aggregateId()).isEqualTo(orderId);
-        assertThat((CharSequence) asynchronousOrderEventsReceived.get(0).aggregateType()).isEqualTo(aggregateType);
-        assertThat(asynchronousOrderEventsReceived.get(0).eventOrder()).isEqualTo(EventOrder.of(2));
-        assertThat(asynchronousOrderEventsReceived.get(0).eventRevision()).isEqualTo(EventRevision.of(1));
-        assertThat(asynchronousOrderEventsReceived.get(0).globalEventOrder()).isEqualTo(GlobalEventOrder.of(3));
-        assertThat(asynchronousOrderEventsReceived.get(0).timestamp()).isBefore(OffsetDateTime.now());
-        assertThat(asynchronousOrderEventsReceived.get(0).event().getEventName()).isEmpty();
-        assertThat(asynchronousOrderEventsReceived.get(0).event().getEventType()).isEqualTo(Optional.of(EventType.of(NoDefaultConstructorOrderEvents.OrderAccepted.class)));
-        assertThat(asynchronousOrderEventsReceived.get(0).event().getEventTypeOrNamePersistenceValue()).isEqualTo(EventType.of(NoDefaultConstructorOrderEvents.OrderAccepted.class).toString());
-        assertThat(asynchronousOrderEventsReceived.get(0).event().getJsonDeserialized().get()).usingRecursiveComparison().isEqualTo(uncommittedEvents.get(0));
-        assertThat(asynchronousOrderEventsReceived.get(0).event().getJson()).isEqualTo("{\"eventOrder\": 2, \"aggregateId\": \"beed77fb-d911-1111-9c48-03ed5bfe8f89\"}");
-        assertThat(asynchronousOrderEventsReceived.get(0).metaData().getJson()).contains("\"Key1\": \"Value1\"");
-        assertThat(asynchronousOrderEventsReceived.get(0).metaData().getJson()).contains("\"Key2\": \"Value2\"");
-        assertThat(asynchronousOrderEventsReceived.get(0).metaData().getJavaType()).isEqualTo(Optional.of(EventMetaData.class.getName()));
-        assertThat(asynchronousOrderEventsReceived.get(0).metaData().getJsonDeserialized()).isEqualTo(Optional.of(META_DATA));
-        assertThat(asynchronousOrderEventsReceived.get(0).causedByEventId()).isEqualTo(Optional.of(eventMapper.causedByEventId));
-        assertThat(asynchronousOrderEventsReceived.get(0).correlationId()).isEqualTo(Optional.of(eventMapper.correlationId));
+        unitOfWorkFactory.usingUnitOfWork(unitOfWorkController -> {
+            var eventsToPersist = Order.createNewOrder(orderId, CustomerId.random(), 123);
+            eventsToPersist = eventsToPersist.append(new Order().rehydrate(eventsToPersist).addProduct(productId, 10));
+            eventsToPersist = eventsToPersist.append(new Order().rehydrate(eventsToPersist).accept());
+            ordersRepository.persist(eventsToPersist);
+        });
+
+        // When
+        var result = unitOfWorkFactory.withUnitOfWork(uow -> ordersRepository.load(orderId, 2L));
+
+        // Then
+        assertThat(result.aggregateId().toString()).isEqualTo(orderId.toString());
+        assertThat(result.productAndQuantity.get(productId)).isEqualTo(10);
+        assertThat(result.accepted).isTrue();
+        assertThat(result.eventOrderOfLastAppliedHistoricEvent()).isEqualTo(EventOrder.of(2));
+    }
+
+    @DisplayName("Load with wrong expectedLatestEventOrder")
+    @Test
+    void loadBasedOnWrongExpectedLatestEventOrderValue() {
+        // Given
+        var orderId   = OrderId.random();
+        var productId = ProductId.random();
+
+        unitOfWorkFactory.usingUnitOfWork(unitOfWorkController -> {
+            var eventsToPersist = Order.createNewOrder(orderId, CustomerId.random(), 123);
+
+            eventsToPersist = eventsToPersist.append(new Order().rehydrate(eventsToPersist).addProduct(productId, 10));
+            ordersRepository.persist(eventsToPersist);
+        });
+
+        // When
+        assertThatThrownBy(() -> unitOfWorkFactory.withUnitOfWork(uow -> ordersRepository.load(orderId, 0L)))
+                .isInstanceOf(UnitOfWorkException.class)
+                .getCause().isInstanceOf(OptimisticFlexAggregateLoadException.class);
+    }
+
+    private static class TestPersistableEventMapper implements PersistableEventMapper {
+        private final CorrelationId correlationId   = CorrelationId.random();
+        private final EventId       causedByEventId = EventId.random();
+
+        @Override
+        public PersistableEvent map(Object aggregateId, AggregateTypeConfiguration aggregateTypeConfiguration, Object event, EventOrder eventOrder) {
+            return PersistableEvent.from(EventId.random(),
+                                         aggregateTypeConfiguration.aggregateType,
+                                         aggregateId,
+                                         EventTypeOrName.with(event.getClass()),
+                                         event,
+                                         eventOrder,
+                                         EventRevision.of(1),
+                                         META_DATA,
+                                         OffsetDateTime.now(),
+                                         causedByEventId,
+                                         correlationId,
+                                         null);
+        }
+    }
+
+    private static class RecordingLocalEventBusConsumer implements Consumer<PersistedEvents> {
+        private final List<PersistedEvent> beforeCommitPersistedEvents  = new ArrayList<>();
+        private final List<PersistedEvent> afterCommitPersistedEvents   = new ArrayList<>();
+        private final List<PersistedEvent> afterRollbackPersistedEvents = new ArrayList<>();
+
+        @Override
+        public void accept(PersistedEvents persistedEvents) {
+            if (persistedEvents.commitStage == CommitStage.BeforeCommit) {
+                beforeCommitPersistedEvents.addAll(persistedEvents.events);
+            } else if (persistedEvents.commitStage == CommitStage.AfterCommit) {
+                afterCommitPersistedEvents.addAll(persistedEvents.events);
+            } else {
+                afterRollbackPersistedEvents.addAll(persistedEvents.events);
+            }
+        }
+
+        private void clear() {
+            beforeCommitPersistedEvents.clear();
+            afterCommitPersistedEvents.clear();
+            afterRollbackPersistedEvents.clear();
+        }
     }
 
     private ObjectMapper createObjectMapper() {
@@ -288,67 +300,4 @@ class OrderAggregateRootRepositoryTest {
         return objectMapper;
     }
 
-    private static class TestPersistableEventMapper implements PersistableEventMapper {
-        private final CorrelationId correlationId   = CorrelationId.random();
-        private final EventId       causedByEventId = EventId.random();
-
-        @Override
-        public PersistableEvent map(Object aggregateId, AggregateTypeConfiguration aggregateTypeConfiguration, Object event, EventOrder eventOrder) {
-            return PersistableEvent.from(EventId.random(),
-                                         aggregateTypeConfiguration.aggregateType,
-                                         aggregateId,
-                                         EventTypeOrName.with(event.getClass()),
-                                         event,
-                                         eventOrder,
-                                         EventRevision.of(1),
-                                         META_DATA,
-                                         OffsetDateTime.now(),
-                                         causedByEventId,
-                                         correlationId,
-                                         null);
-        }
-    }
-
-    /**
-     * Simple test in memory projector that just returns the underlying list of {@link PersistedEvent}'s
-     */
-    private class InMemoryListProjector implements InMemoryProjector {
-        @Override
-        public boolean supports(Class<?> projectionType) {
-            return List.class.isAssignableFrom(projectionType);
-        }
-
-        @Override
-        public <ID, PROJECTION> Optional<PROJECTION> projectEvents(AggregateType aggregateType,
-                                                                   ID aggregateId,
-                                                                   Class<PROJECTION> projectionType,
-                                                                   EventStore<?> eventStore) {
-            var eventStream = eventStore.fetchStream(aggregateType,
-                                                     aggregateId);
-            return (Optional<PROJECTION>) eventStream.map(actualEventStream -> actualEventStream.eventList());
-        }
-    }
-
-    private static class RecordingLocalEventBusConsumer implements Consumer<PersistedEvents> {
-        private final List<PersistedEvent> beforeCommitPersistedEvents  = new ArrayList<>();
-        private final List<PersistedEvent> afterCommitPersistedEvents   = new ArrayList<>();
-        private final List<PersistedEvent> afterRollbackPersistedEvents = new ArrayList<>();
-
-        @Override
-        public void accept(PersistedEvents persistedEvents) {
-            if (persistedEvents.commitStage == CommitStage.BeforeCommit) {
-                beforeCommitPersistedEvents.addAll(persistedEvents.events);
-            } else if (persistedEvents.commitStage == CommitStage.AfterCommit) {
-                afterCommitPersistedEvents.addAll(persistedEvents.events);
-            } else {
-                afterRollbackPersistedEvents.addAll(persistedEvents.events);
-            }
-        }
-
-        private void clear() {
-            beforeCommitPersistedEvents.clear();
-            afterCommitPersistedEvents.clear();
-            afterRollbackPersistedEvents.clear();
-        }
-    }
 }

@@ -1,6 +1,6 @@
 package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic;
 
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.EventHandler;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.OrderEvents.*;
 
 import java.util.*;

@@ -1,6 +1,7 @@
 package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.state;
 
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.*;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.InitialEventIsMissingAggregateIdException;
 import org.junit.jupiter.api.Test;
 
 import static dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.OrderEvents.*;

@@ -1,6 +1,7 @@
 package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.objenesis.state;
 
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.*;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.InitialEventIsMissingAggregateIdException;
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.objenesis.NoDefaultConstructorOrderEvents.*;
 import org.junit.jupiter.api.*;
 
