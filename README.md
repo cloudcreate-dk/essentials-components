@@ -18,6 +18,9 @@ This library contains the smallest set of supporting building blocks needed for 
     - `Tenant` and `TenantId`
 - **Common Interfaces**
     - `Lifecycle`
+- **Transactions**
+    - `UnitOfWork`
+    - `UnitOfWorkFactory`
 
 To use `common-types` just add the following Maven dependency:
 
@@ -35,160 +38,311 @@ This library focuses on providing different flavours of Event Source Aggregates 
 The `EventStore` is very flexible and doesn't specify any specific design requirements for an Aggregate or its Events, except that that have to be associated with an `AggregateType` (see the
 `AggregateType` sub section or the `EventStore` section for more information).
 
-This library supports multiple flavours of Aggregate design such as the `AggregateRoot`, `AggregateRootWithState` and the `FlexAggregate`.  
+This library supports multiple flavours of Aggregate design such as: 
+- The **modern** `dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.modern.AggregateRoot` 
+- The *classic* `dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.AggregateRoot`
+- The *classic* `dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.state.AggregateRootWithState` 
+- The **functional** `dk.cloudcreate.essentials.components.eventsourced.aggregates.flex.FlexAggregate`
 
-For an example of the `FlexAggregate`, which features a functional immutable Aggregate design, check the `Order` and `FlexAggregateRepositoryIT` in 
-`essentials-components/eventsourced-aggregates/src/test/java/dk/cloudcreate/essentials/components/eventsourced/aggregates/flex`
+The **modern** `AggregateRoot`, *classic* `AggregateRoot` and *classic* `AggregateRootWithState` are all examples of a mutable `StatefulAggregate` design.  
+What makes an `Aggregate` design stateful is the fact that any changes, i.e. Events applied as the result of calling command methods on the aggregate instance, are stored within
+the `StatefulAggregate` and can be queried using `getUncommittedChanges()` and reset (e.g. after a transaction/UnitOfWork has completed) using `markChangesAsCommitted()`
 
-#### Order aggregate with separate state object
+The `FlexAggregate` follows a functional immutable Aggregate design where each command method returns the `EventsToPersist` and doesn't alter the state of the aggregate.     
+Check the `Order` and `FlexAggregateRepositoryIT` examples in `essentials-components/eventsourced-aggregates/src/test/java/dk/cloudcreate/essentials/components/eventsourced/aggregates/flex`
 
-Below is an example of an `Order` aggregate based on the `AggregateRootWithState` concept, where the Aggregate contains the command methods and all event handlers and state are contained within
-an `AggregateState` object, which in this case is called the `OrderState`:
+### Modern stateful Order aggregate with a separate state object
+
+See `eventsourced-aggregates/src/test/java/dk/cloudcreate/essentials/components/eventsourced/aggregates/modern/OrderAggregateRootRepositoryTest.java` for more details.
 
 ```
-public class Order extends AggregateRootWithState<OrderId, OrderState, Order> {
-    public Order() {
+public class Order extends AggregateRoot<OrderId, OrderEvent, Order> implements WithState<OrderId, OrderEvent, Order, OrderState> {
+    /**
+     * Used for rehydration
+     */
+    public Order(OrderId orderId) {
+        super(orderId);
     }
 
     public Order(OrderId orderId,
                  CustomerId orderingCustomerId,
                  int orderNumber) {
-        requireNonNull(orderId, "You must provide an orderId");
+        super(orderId);
         requireNonNull(orderingCustomerId, "You must provide an orderingCustomerId");
 
-        apply(new OrderAdded(orderId,
-                             orderingCustomerId,
-                             orderNumber));
+        apply(new OrderEvent.OrderAdded(orderId,
+                                        orderingCustomerId,
+                                        orderNumber));
     }
 
     public void addProduct(ProductId productId, int quantity) {
         requireNonNull(productId, "You must provide a productId");
-        if (state.accepted) {
+        if (state().accepted) {
             throw new IllegalStateException("Order is already accepted");
         }
-        apply(new ProductAddedToOrder(productId, quantity));
+        apply(new OrderEvent.ProductAddedToOrder(aggregateId(),
+                                                 productId,
+                                                 quantity));
     }
 
     public void adjustProductQuantity(ProductId productId, int newQuantity) {
         requireNonNull(productId, "You must provide a productId");
-        if (state.accepted) {
+        if (state().accepted) {
             throw new IllegalStateException("Order is already accepted");
         }
-        if (state.productAndQuantity.containsKey(productId)) {
-            apply(new ProductOrderQuantityAdjusted(productId, newQuantity));
+        if (state().productAndQuantity.containsKey(productId)) {
+            apply(new OrderEvent.ProductOrderQuantityAdjusted(aggregateId(),
+                                                              productId,
+                                                              newQuantity));
         }
     }
 
     public void removeProduct(ProductId productId) {
         requireNonNull(productId, "You must provide a productId");
-        if (state.accepted) {
+        if (state().accepted) {
             throw new IllegalStateException("Order is already accepted");
         }
-        if (state.productAndQuantity.containsKey(productId)) {
-            apply(new ProductRemovedFromOrder(productId));
+        if (state().productAndQuantity.containsKey(productId)) {
+            apply(new OrderEvent.ProductRemovedFromOrder(aggregateId(),
+                                                         productId));
         }
     }
 
     public void accept() {
-        if (state.accepted) {
+        if (state().accepted) {
             return;
         }
-        apply(new OrderAccepted());
+        // Apply the event together with its event order (in case this is needed)
+        apply(eventOrder -> new OrderEvent.OrderAccepted(aggregateId(),
+                                                         eventOrder));
+    }
+
+    /**
+     * Covariant return type overriding.<br>
+     * This will allow the {@link AggregateRoot#state()} method to return
+     * the specific state type, which means we don't need to use e.g. <code>state(OrderState.class).accepted</code><br>
+     */
+    @SuppressWarnings("unchecked")
+    protected OrderState state() {
+        return super.state();
     }
 }
 ```
 
-#### Event example:
-
-The `AggregateRoot` (and by extension the `AggregateRootWithState`) defines a root/base `Event` which all events must inherit from.  
-*Note: The `FlexAggregate` doesn't apply any requirements on Events, it can be POJO's (Plain Old Java Objects), `Record`'s, etc.*
+##### Order Events
 
 ```
-public final class OrderEvents {
-    public static class OrderAdded extends Event<OrderId> {
-        private CustomerId orderingCustomerId;
-        private long       orderNumber;
+public class OrderEvent {
+    public final OrderId orderId;
 
-        public OrderAdded() {
-        }
+    public OrderEvent(OrderId orderId) {
+        this.orderId = requireNonNull(orderId);
+    }
+
+    public static class OrderAdded extends OrderEvent {
+        public final CustomerId orderingCustomerId;
+        public final long       orderNumber;
 
         public OrderAdded(OrderId orderId, CustomerId orderingCustomerId, long orderNumber) {
-            // MUST be set manually for the FIRST/INITIAL - after this the AggregateRoot ensures
-            // that the aggregateId will be set on the other events automatically
-            aggregateId(orderId);
+            super(orderId);
             this.orderingCustomerId = orderingCustomerId;
             this.orderNumber = orderNumber;
         }
+    }
 
-        public CustomerId getOrderingCustomerId() {
-            return orderingCustomerId;
-        }
+    public static class OrderAccepted extends OrderEvent {
+        public final EventOrder eventOrder;
 
-        public long getOrderNumber() {
-            return orderNumber;
+        public OrderAccepted(OrderId orderId, EventOrder eventOrder) {
+            super(orderId);
+            this.eventOrder = eventOrder;
         }
     }
 
-    public static class ProductAddedToOrder extends Event<OrderId> {
-        private ProductId productId;
-        private int       quantity;
+    public static class ProductAddedToOrder extends OrderEvent {
+        public final ProductId productId;
+        public final int       quantity;
 
-        public ProductAddedToOrder() {
-        }
-
-        public ProductAddedToOrder(ProductId productId, int quantity) {
+        public ProductAddedToOrder(OrderId orderId, ProductId productId, int quantity) {
+            super(orderId);
             this.productId = productId;
             this.quantity = quantity;
         }
+    }
 
-        public ProductId getProductId() {
-            return productId;
-        }
+    public static class ProductOrderQuantityAdjusted extends OrderEvent {
+        public final ProductId productId;
+        public final int       newQuantity;
 
-        public int getQuantity() {
-            return quantity;
+        public ProductOrderQuantityAdjusted(OrderId orderId, ProductId productId, int newQuantity) {
+            super(orderId);
+            this.productId = productId;
+            this.newQuantity = newQuantity;
         }
     }
-    ...
+
+    public static class ProductRemovedFromOrder extends OrderEvent {
+        public final ProductId productId;
+
+        public ProductRemovedFromOrder(OrderId orderId, ProductId productId) {
+            super(orderId);
+            this.productId = productId;
+        }
+    }
 }
 ```
 
-#### OrderState:
-
-The state object must inherit from the `AggregateState` base class:
+##### Modern Order State
 
 ```
-public class OrderState extends AggregateState<OrderId> {
-    Map<ProductId, Integer> productAndQuantity;
-    boolean                 accepted;
+public class OrderState extends AggregateState<OrderId, OrderEvent, Order> {
+     Map<ProductId, Integer> productAndQuantity;
+     boolean                 accepted;
 
     @EventHandler
-    private void on(OrderAdded e) {
+    private void on(OrderEvent.OrderAdded e) {
         productAndQuantity = new HashMap<>();
     }
 
     @EventHandler
-    private void on(ProductAddedToOrder e) {
-        var existingQuantity = productAndQuantity.get(e.getProductId());
-        productAndQuantity.put(e.getProductId(), e.getQuantity() + (existingQuantity != null ? existingQuantity : 0));
+    private void on(OrderEvent.ProductAddedToOrder e) {
+        var existingQuantity = productAndQuantity.get(e.productId);
+        productAndQuantity.put(e.productId, e.quantity + (existingQuantity != null ? existingQuantity : 0));
     }
 
     @EventHandler
-    private void on(ProductOrderQuantityAdjusted e) {
-        productAndQuantity.put(e.getProductId(), e.getNewQuantity());
+    private void on(OrderEvent.ProductOrderQuantityAdjusted e) {
+        productAndQuantity.put(e.productId, e.newQuantity);
     }
 
     @EventHandler
-    private void on(ProductRemovedFromOrder e) {
-        productAndQuantity.remove(e.getProductId());
+    private void on(OrderEvent.ProductRemovedFromOrder e) {
+        productAndQuantity.remove(e.productId);
     }
 
     @EventHandler
-    private void on(OrderAccepted e) {
+    private void on(OrderEvent.OrderAccepted e) {
         accepted = true;
     }
 }
 ```
+
+#### Modern stateful Order Aggregate without separate state object
+
+```
+public class Order extends AggregateRoot<OrderId, OrderEvent, Order> {
+    private Map<ProductId, Integer> productAndQuantity;
+    private boolean                 accepted;
+
+    /**
+     * Used for rehydration
+     */
+    public Order(OrderId orderId) {
+        super(orderId);
+    }
+
+    public Order(OrderId orderId,
+                 CustomerId orderingCustomerId,
+                 int orderNumber) {
+        this(orderId);
+        // Normally you will ensure that orderId is never NULL, but to perform certain tests we need to option to allow this to be null
+        requireNonNull(orderingCustomerId, "You must provide an orderingCustomerId");
+
+        apply(new OrderEvent.OrderAdded(orderId,
+                                        orderingCustomerId,
+                                        orderNumber));
+    }
+
+    public void addProduct(ProductId productId, int quantity) {
+        requireNonNull(productId, "You must provide a productId");
+        if (accepted) {
+            throw new IllegalStateException("Order is already accepted");
+        }
+        apply(new OrderEvent.ProductAddedToOrder(aggregateId(),
+                                                 productId,
+                                                 quantity));
+    }
+
+    public void adjustProductQuantity(ProductId productId, int newQuantity) {
+        requireNonNull(productId, "You must provide a productId");
+        if (accepted) {
+            throw new IllegalStateException("Order is already accepted");
+        }
+        if (productAndQuantity.containsKey(productId)) {
+            apply(new OrderEvent.ProductOrderQuantityAdjusted(aggregateId(),
+                                                              productId,
+                                                              newQuantity));
+        }
+    }
+
+    public void removeProduct(ProductId productId) {
+        requireNonNull(productId, "You must provide a productId");
+        if (accepted) {
+            throw new IllegalStateException("Order is already accepted");
+        }
+        if (productAndQuantity.containsKey(productId)) {
+            apply(new OrderEvent.ProductRemovedFromOrder(aggregateId(),
+                                                         productId));
+        }
+    }
+
+    public void accept() {
+        if (accepted) {
+            return;
+        }
+        apply(eventOrder -> new OrderEvent.OrderAccepted(aggregateId(),
+                                                         eventOrder));
+    }
+
+    @EventHandler
+    private void on(OrderEvent.OrderAdded e) {
+        productAndQuantity = new HashMap<>();
+    }
+
+    @EventHandler
+    private void on(OrderEvent.ProductAddedToOrder e) {
+        var existingQuantity = productAndQuantity.get(e.productId);
+        productAndQuantity.put(e.productId, e.quantity + (existingQuantity != null ? existingQuantity : 0));
+    }
+
+    @EventHandler
+    private void on(OrderEvent.ProductOrderQuantityAdjusted e) {
+        productAndQuantity.put(e.productId, e.newQuantity);
+    }
+
+    @EventHandler
+    private void on(OrderEvent.ProductRemovedFromOrder e) {
+        productAndQuantity.remove(e.productId);
+    }
+
+    @EventHandler
+    private void on(OrderEvent.OrderAccepted e) {
+        accepted = true;
+    }
+}
+```
+
+For other examples see:
+#### Modern `AggregateRoot`
+- With separate `WithState` object using `ReflectionBasedAggregateInstanceFactory`:   
+  - `eventsourced-aggregates/src/test/java/dk/cloudcreate/essentials/components/eventsourced/aggregates/modern/with_state/OrderAggregateRootWithStateRepositoryIT.java` 
+- **Without** separate State object using `ReflectionBasedAggregateInstanceFactory`: 
+  - `eventsourced-aggregates/src/test/java/dk/cloudcreate/essentials/components/eventsourced/aggregates/modern/OrderAggregateRootRepositoryIT.java`
+
+#### Functional `FlexAggregate`
+- `eventsourced-aggregates/src/test/java/dk/cloudcreate/essentials/components/eventsourced/aggregates/flex/FlexAggregateRepositoryIT.java`
+
+#### Classic `AggregateRoot`
+- Using `ObjenesisAggregateInstanceFactory`: 
+  - `eventsourced-aggregates/src/test/java/dk/cloudcreate/essentials/components/eventsourced/aggregates/classic/objenesis/OrderAggregateRootRepositoryIT.java`
+- Using `ReflectionBasedAggregateInstanceFactory`: 
+  - `eventsourced-aggregates/src/test/java/dk/cloudcreate/essentials/components/eventsourced/aggregates/classic/OrderAggregateRootRepositoryIT.java`
+
+#### Classic `AggregateRootWithState`
+- Using `ObjenesisAggregateInstanceFactory`: 
+  - `eventsourced-aggregates/src/test/java/dk/cloudcreate/essentials/components/eventsourced/aggregates/classic/objenesis/state/OrderWithStateAggregateRootRepositoryIT.java`
+- Using `ReflectionBasedAggregateInstanceFactory`: 
+  - `eventsourced-aggregates/src/test/java/dk/cloudcreate/essentials/components/eventsourced/aggregates/classic/state/OrderWithStateAggregateRootRepositoryIT.java`
 
 ### AggregateType
 
@@ -228,13 +382,13 @@ that instructs the `EventStore`'s persistence strategy, such as the `SeparateTab
 ```
 var orders = AggregateType.of("Orders");
 var ordersRepository = AggregateRootRepository.from(eventStore,
-                                                    standardSingleTenantConfigurationUsingJackson(
+                                                    SeparateTablePerAggregateTypeConfiguration.standardSingleTenantConfigurationUsingJackson(
                                                         orders,
                                                         createObjectMapper(),
                                                         AggregateIdSerializer.serializerFor(OrderId.class),
                                                         IdentifierColumnType.UUID,
                                                         JSONColumnType.JSONB),
-                                                    defaultConstructorFactory(),
+                                                    StatefulAggregateInstanceFactory.reflectionBasedAggregateRootFactory(), // Alternative is StatefulAggregateInstanceFactory.objenesisAggregateRootFactory()
                                                     Order.class);
 
 var orderId = OrderId.random();
@@ -420,7 +574,7 @@ You can add as many `AggregateType` configurations as needed, but they need to b
 ```
 var orders = AggregateType.of("Order");
 eventStore.addAggregateTypeConfiguration(
-    standardSingleTenantConfigurationUsingJackson(orders,
+    SeparateTablePerAggregateTypeConfiguration.standardSingleTenantConfigurationUsingJackson(orders,
                                                   createObjectMapper(),
                                                   AggregateIdSerializer.serializerFor(OrderId.class),
                                                   IdentifierColumnType.UUID,
@@ -784,7 +938,8 @@ eventStore = new PostgresqlEventStore<>(unitOfWorkFactory,
 var orders = AggregateType.of("Order");
 
 eventStore.addAggregateTypeConfiguration(
-    standardSingleTenantConfigurationUsingJackson(orders,
+    SeparateTablePerAggregateTypeConfiguration.standardSingleTenantConfigurationUsingJackson(
+                                                  orders,
                                                   createObjectMapper(),
                                                   AggregateIdSerializer.serializerFor(OrderId.class),
                                                   IdentifierColumnType.UUID,
