@@ -1,13 +1,13 @@
 package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.spring.test_data;
 
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.EventHandler;
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.state.AggregateState;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.state.AggregateState;
 
 import java.util.*;
 
-import static dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.spring.test_data.OrderEvents.*;
+import static dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.spring.test_data.OrderEvent.*;
 
-public class OrderState extends AggregateState<OrderId> {
+public class OrderState extends AggregateState<OrderId, OrderEvent> {
     // Fields are public for framework tests performed - this isn't a pattern to replicate in a business application
     public Map<ProductId, Integer> productAndQuantity;
     public boolean                 accepted;

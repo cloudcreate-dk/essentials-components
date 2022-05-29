@@ -1,12 +1,12 @@
 package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.spring.test_data;
 
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.Event;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.Event;
 
-public final class OrderEvents {
+public abstract class OrderEvent extends Event<OrderId> {
     // ------------------------------------------------------------------------ Events ------------------------------------------------------------------------------------
     // Note: These Events assume the ObjectMapper is configured without Objenesis Jackson JSON instantiation (only requires EssentialTypesJacksonModule from types-jackson)
     // ------------------------------------------------------------------------ Events ------------------------------------------------------------------------------------
-    public static class OrderAdded extends Event<OrderId> {
+    public static class OrderAdded extends OrderEvent {
         private CustomerId orderingCustomerId;
         private long       orderNumber;
 
@@ -30,7 +30,7 @@ public final class OrderEvents {
         }
     }
 
-    public static class ProductAddedToOrder extends Event<OrderId> {
+    public static class ProductAddedToOrder extends OrderEvent {
         private ProductId productId;
         private int       quantity;
 
@@ -51,7 +51,7 @@ public final class OrderEvents {
         }
     }
 
-    public static class ProductOrderQuantityAdjusted extends Event<OrderId> {
+    public static class ProductOrderQuantityAdjusted extends OrderEvent {
         private ProductId productId;
         private int       newQuantity;
 
@@ -72,7 +72,7 @@ public final class OrderEvents {
         }
     }
 
-    public static class ProductRemovedFromOrder extends Event<OrderId> {
+    public static class ProductRemovedFromOrder extends OrderEvent {
         private ProductId productId;
 
         public ProductRemovedFromOrder() {
@@ -87,6 +87,6 @@ public final class OrderEvents {
         }
     }
 
-    public static class OrderAccepted extends Event<OrderId> {
+    public static class OrderAccepted extends OrderEvent {
     }
 }
