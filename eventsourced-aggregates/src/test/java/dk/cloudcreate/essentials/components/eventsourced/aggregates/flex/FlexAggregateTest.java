@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class FlexAggregateTest {
     @Test
     void createAggregateWithNullHistoricPersistedEvents() {
-        Assertions.assertThatThrownBy(() -> new Order().rehydrate(OrderId.random(), (List<?>) null))
+        Assertions.assertThatThrownBy(() -> new Order().rehydrate(OrderId.random(), (List<Object>) null))
                   .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -39,13 +39,13 @@ public class FlexAggregateTest {
 
     @Test
     void createAggregateWithIdAndNullHistoricEvents() {
-        Assertions.assertThatThrownBy(() -> new Order().rehydrate(OrderId.random(), (Stream<?>) null))
+        Assertions.assertThatThrownBy(() -> new Order().rehydrate(OrderId.random(), (Stream<Object>) null))
                   .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void createAggregateWithNullEventsToPersist() {
-        Assertions.assertThatThrownBy(() -> new Order().rehydrate((EventsToPersist<OrderId>) null))
+        Assertions.assertThatThrownBy(() -> new Order().rehydrate((EventsToPersist<OrderId, Object>) null))
                   .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -67,7 +67,7 @@ public class FlexAggregateTest {
 
         // Then
         assertThat(aggregate.aggregateId().toString()).isEqualTo(orderId.toString());
-        assertThat(aggregate.eventOrderOfLastAppliedHistoricEvent()).isEqualTo(EventOrder.of(1));
+        assertThat(aggregate.eventOrderOfLastRehydratedEvent()).isEqualTo(EventOrder.of(1));
         assertThat(aggregate.hasBeenRehydrated()).isEqualTo(true);
         assertThat(aggregate.isAccepted()).isEqualTo(true);
     }
@@ -82,7 +82,7 @@ public class FlexAggregateTest {
 
         // Then
         assertThat(aggregate.aggregateId().toString()).isEqualTo(orderId.toString());
-        assertThat(aggregate.eventOrderOfLastAppliedHistoricEvent()).isEqualTo(EventsToPersist.NO_EVENTS_HAVE_BEEN_PERSISTED);
+        assertThat(aggregate.eventOrderOfLastRehydratedEvent()).isEqualTo(EventOrder.NO_EVENTS_PERSISTED);
         assertThat(aggregate.hasBeenRehydrated()).isEqualTo(false);
         assertThat(aggregate.isAccepted()).isEqualTo(false);
     }
@@ -113,7 +113,7 @@ public class FlexAggregateTest {
 
         // Then
         assertThat((CharSequence) aggregate.aggregateId()).isEqualTo(orderId);
-        assertThat(aggregate.eventOrderOfLastAppliedHistoricEvent()).isEqualTo(EventOrder.of(1));
+        assertThat(aggregate.eventOrderOfLastRehydratedEvent()).isEqualTo(EventOrder.of(1));
         assertThat(aggregate.hasBeenRehydrated()).isEqualTo(true);
         assertThat(aggregate.isAccepted()).isEqualTo(true);
     }

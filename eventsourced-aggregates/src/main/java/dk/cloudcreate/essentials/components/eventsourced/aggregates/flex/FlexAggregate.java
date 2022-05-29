@@ -1,7 +1,7 @@
 package dk.cloudcreate.essentials.components.eventsourced.aggregates.flex;
 
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.Event;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.Event;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.EventStore;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.AggregateEventStream;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.EventOrder;
@@ -99,7 +99,7 @@ import static dk.cloudcreate.essentials.shared.FailFast.requireNonNull;
  * the repository will return an {@link FlexAggregate} instance that has had all events returned from the {@link EventStore} <b>applied</b> to it.
  * <br/>
  * What happens internally is that the {@link FlexAggregateRepository#load(Object)} method will call {@link #rehydrate(AggregateEventStream)},
- * which in-order will call {@link FlexAggregate#applyHistoricEventToTheAggregate(Object)} for each
+ * which in-order will call {@link FlexAggregate#applyRehydratedEventToTheAggregate(Object)} for each
  * event returned from the EventStore.
  * <br/>
  * You can either choose to implement the event matching using instanceof:
@@ -160,7 +160,7 @@ import static dk.cloudcreate.essentials.shared.FailFast.requireNonNull;
  * @see FlexAggregateRepository
  */
 @SuppressWarnings("unchecked")
-public abstract class FlexAggregate<ID, AGGREGATE_TYPE extends FlexAggregate<ID, AGGREGATE_TYPE>> implements Aggregate<ID> {
+public abstract class FlexAggregate<ID, AGGREGATE_TYPE extends FlexAggregate<ID, AGGREGATE_TYPE>> implements Aggregate<ID, AGGREGATE_TYPE> {
     private PatternMatchingMethodInvoker<Object> invoker;
     private ID                                   aggregateId;
 
@@ -203,13 +203,13 @@ public abstract class FlexAggregate<ID, AGGREGATE_TYPE extends FlexAggregate<ID,
      * @param eventsToPersist
      * @return the aggregate instance
      */
-    public AGGREGATE_TYPE rehydrate(EventsToPersist<ID> eventsToPersist) {
+    public AGGREGATE_TYPE rehydrate(EventsToPersist<ID, Object> eventsToPersist) {
         requireNonNull(eventsToPersist, "You must supply an EventsToPersist instance");
         return rehydrate(eventsToPersist.aggregateId,
-                         eventsToPersist.eventsToPersist);
+                         eventsToPersist.events);
     }
 
-    public AGGREGATE_TYPE rehydrate(ID aggregateId, List<?> historicEvents) {
+    public AGGREGATE_TYPE rehydrate(ID aggregateId, List<Object> historicEvents) {
         requireNonNull(historicEvents, "You must supply historicEvents");
         return rehydrate(aggregateId, historicEvents.stream());
     }
@@ -217,16 +217,16 @@ public abstract class FlexAggregate<ID, AGGREGATE_TYPE extends FlexAggregate<ID,
     /**
      * Effectively performs a leftFold over all the previous events related to this aggregate instance
      *
-     * @param historicEvents the previous recorded/persisted events related to this aggregate instance, aka. the aggregates history
+     * @param persistedEvents the previous recorded/persisted events related to this aggregate instance, aka. the aggregates history
      * @return the aggregate instance
      */
-    public AGGREGATE_TYPE rehydrate(ID aggregateId, Stream<?> historicEvents) {
+    public AGGREGATE_TYPE rehydrate(ID aggregateId, Stream<Object> persistedEvents) {
         this.aggregateId = requireNonNull(aggregateId, "You must provide an aggregateId when initializing a FlexAggregate from a list of previous events");
-        requireNonNull(historicEvents, "You must provide a list of historic events");
+        requireNonNull(persistedEvents, "You must provide a list of persisted events");
 
         // Must be initialized here to ensure any eventOrderOfLastAppliedHistoricEvent++ will set the correct event order
-        eventOrderOfLastRehydratedEvent = EventsToPersist.NO_EVENTS_HAVE_BEEN_PERSISTED;
-        historicEvents.forEach(this::applyHistoricEvent);
+        eventOrderOfLastRehydratedEvent = EventOrder.NO_EVENTS_PERSISTED;
+        persistedEvents.forEach(this::rehydrateEvent);
 
         return (AGGREGATE_TYPE) this;
     }
@@ -239,8 +239,8 @@ public abstract class FlexAggregate<ID, AGGREGATE_TYPE extends FlexAggregate<ID,
      *                        May be empty if the command method invocation didn't result in any events (e.g. due to idempotency checks)
      * @param <ID>            the aggregate id type
      */
-    public static <ID> EventsToPersist<ID> newAggregateEvents(ID aggregateId,
-                                                              Object... eventsToPersist) {
+    public static <ID> EventsToPersist<ID, Object> newAggregateEvents(ID aggregateId,
+                                                                      Object... eventsToPersist) {
         return EventsToPersist.initialAggregateEvents(aggregateId,
                                                       eventsToPersist);
     }
@@ -252,7 +252,7 @@ public abstract class FlexAggregate<ID, AGGREGATE_TYPE extends FlexAggregate<ID,
      *                        May be empty if the command method invocation didn't result in any events (e.g. due to idempotency checks)
      * @see EventsToPersist#events(FlexAggregate, Object...)
      */
-    protected EventsToPersist<ID> events(Object... eventsToPersist) {
+    protected EventsToPersist<ID, Object> events(Object... eventsToPersist) {
         return EventsToPersist.events(this, eventsToPersist);
     }
 
@@ -261,13 +261,13 @@ public abstract class FlexAggregate<ID, AGGREGATE_TYPE extends FlexAggregate<ID,
      *
      * @see EventsToPersist#noEvents(FlexAggregate)
      */
-    protected EventsToPersist<ID> noEvents() {
+    protected EventsToPersist<ID, Object> noEvents() {
         return EventsToPersist.noEvents(this);
     }
 
-    private void applyHistoricEvent(Object event) {
+    private void rehydrateEvent(Object event) {
         requireNonNull(event, "You must supply an event");
-        applyHistoricEventToTheAggregate(event);
+        applyRehydratedEventToTheAggregate(event);
         hasBeenRehydrated = true;
         eventOrderOfLastRehydratedEvent = eventOrderOfLastRehydratedEvent.increaseAndGet();
     }
@@ -280,7 +280,7 @@ public abstract class FlexAggregate<ID, AGGREGATE_TYPE extends FlexAggregate<ID,
      *
      * @param event the event to apply to the aggregate
      */
-    protected void applyHistoricEventToTheAggregate(Object event) {
+    protected void applyRehydratedEventToTheAggregate(Object event) {
         if (invoker == null) {
             // Instance was created by Objenesis
             initialize();
@@ -321,13 +321,13 @@ public abstract class FlexAggregate<ID, AGGREGATE_TYPE extends FlexAggregate<ID,
      * <li>{@link #rehydrate(Object, List)}</li>
      * </ul>
      *
-     * @return the event order of the last applied {@link Event} or {@link EventsToPersist#NO_EVENTS_HAVE_BEEN_PERSISTED} in case no
+     * @return the event order of the last applied {@link Event} or {@link EventOrder#NO_EVENTS_PERSISTED} in case no
      * events has ever been applied to the aggregate
      */
-    public final EventOrder eventOrderOfLastAppliedHistoricEvent() {
+    public final EventOrder eventOrderOfLastRehydratedEvent() {
         if (eventOrderOfLastRehydratedEvent == null) {
             // This constructor is needed to work well with Objenesis where constructors and fields are not called when an object instance is created
-            eventOrderOfLastRehydratedEvent = EventsToPersist.NO_EVENTS_HAVE_BEEN_PERSISTED;
+            eventOrderOfLastRehydratedEvent = EventOrder.NO_EVENTS_PERSISTED;
         }
         return eventOrderOfLastRehydratedEvent;
     }

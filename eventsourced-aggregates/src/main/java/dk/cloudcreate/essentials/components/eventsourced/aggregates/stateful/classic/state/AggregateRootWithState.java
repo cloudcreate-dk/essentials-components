@@ -1,11 +1,11 @@
-package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.state;
+package dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.state;
 
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.EventHandler;
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.*;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.*;
+import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.EventOrder;
 import dk.cloudcreate.essentials.shared.reflection.Reflector;
 import dk.cloudcreate.essentials.shared.types.GenericType;
 
-import java.util.List;
 import java.util.stream.Stream;
 
 /**
@@ -16,10 +16,12 @@ import java.util.stream.Stream;
  * {@link EventHandler} annotated methods.
  *
  * @param <ID>             the aggregate id type
+ * @param <EVENT_TYPE>     the type of event
  * @param <AGGREGATE_TYPE> the aggregate self type (i.e. your concrete aggregate type)
  * @param <STATE>          the aggregate state type (i.e. your concrete aggregate state)
  */
-public class AggregateRootWithState<ID, STATE extends AggregateState<ID>, AGGREGATE_TYPE extends AggregateRootWithState<ID, STATE, AGGREGATE_TYPE>> extends AggregateRoot<ID, AGGREGATE_TYPE> {
+public abstract class AggregateRootWithState<ID, EVENT_TYPE extends Event<ID>, STATE extends AggregateState<ID, EVENT_TYPE>,
+        AGGREGATE_TYPE extends AggregateRootWithState<ID, EVENT_TYPE, STATE, AGGREGATE_TYPE>> extends AggregateRoot<ID, EVENT_TYPE, AGGREGATE_TYPE> {
     protected STATE state;
 
     public AggregateRootWithState() {
@@ -37,7 +39,7 @@ public class AggregateRootWithState<ID, STATE extends AggregateState<ID>, AGGREG
 
     @SuppressWarnings("unchecked")
     @Override
-    public AGGREGATE_TYPE rehydrate(Stream<Event<ID>> previousEvents) {
+    public AGGREGATE_TYPE rehydrate(Stream<EVENT_TYPE> previousEvents) {
         if (state == null) {
             // Instance was created by Objenesis
             initialize();
@@ -47,7 +49,12 @@ public class AggregateRootWithState<ID, STATE extends AggregateState<ID>, AGGREG
     }
 
     @Override
-    protected void apply(Event<ID> event) {
+    public EventOrder eventOrderOfLastRehydratedEvent() {
+        return state.getEventOrderOfLastRehydratedEvent();
+    }
+
+    @Override
+    protected void apply(EVENT_TYPE event) {
         state.apply(event);
     }
 
@@ -57,13 +64,15 @@ public class AggregateRootWithState<ID, STATE extends AggregateState<ID>, AGGREG
     }
 
     @Override
-    public long eventOrderOfLastAppliedEvent() {
+    public EventOrder eventOrderOfLastAppliedEvent() {
         return state.eventOrderOfLastAppliedEvent();
     }
 
     @Override
-    public List<Event<ID>> uncommittedChanges() {
-        return state.uncommittedChanges();
+    public EventsToPersist<ID, EVENT_TYPE> getUncommittedChanges() {
+        return new EventsToPersist<>(aggregateId(),
+                                     eventOrderOfLastRehydratedEvent(),
+                                     state.uncommittedChanges());
     }
 
     @Override
@@ -79,7 +88,6 @@ public class AggregateRootWithState<ID, STATE extends AggregateState<ID>, AGGREG
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     protected Class<AggregateState> resolveStateImplementationClass() {
-        return (Class<AggregateState>) GenericType.resolveGenericType(this.getClass(), 1)
-                                                  .orElseThrow(() -> new IllegalStateException("Couldn't resolve the concrete AggregateState type used for " + this.getClass().getName()));
+        return (Class<AggregateState>) GenericType.resolveGenericTypeOnSuperClass(this.getClass(), 2);
     }
 }

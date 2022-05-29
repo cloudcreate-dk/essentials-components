@@ -8,7 +8,9 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import dk.cloudcreate.essentials.components.common.transaction.UnitOfWork;
 import dk.cloudcreate.essentials.components.common.types.*;
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.*;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.OrderEvents;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.StatefulAggregateRepository;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.Event;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.bus.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.*;
@@ -31,12 +33,12 @@ import java.time.*;
 import java.util.*;
 import java.util.function.Consumer;
 
-import static dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.AggregateRootInstanceFactory.defaultConstructorFactory;
+import static dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.StatefulAggregateInstanceFactory.reflectionBasedAggregateRootFactory;
 import static dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.persistence.table_per_aggregate_type.SeparateTablePerAggregateTypeConfiguration.standardSingleTenantConfigurationUsingJackson;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
-class OrderWithStateAggregateRootRepositoryTest {
+class OrderWithStateAggregateRootRepositoryIT {
     public static final EventMetaData META_DATA = EventMetaData.of("Key1", "Value1", "Key2", "Value2");
     public static final AggregateType ORDERS    = AggregateType.of("Orders");
 
@@ -51,10 +53,10 @@ class OrderWithStateAggregateRootRepositoryTest {
                                                                                                            .withUsername("test-user")
                                                                                                            .withPassword("secret-password");
 
-    private AggregateRootRepository<OrderId, OrderWithState> ordersRepository;
-    private RecordingLocalEventBusConsumer                   recordingLocalEventBusConsumer;
-    private Disposable                                       persistedEventFlux;
-    private List<PersistedEvent>                             asynchronousOrderEventsReceived;
+    private StatefulAggregateRepository<OrderId, Event<OrderId>, OrderWithState> ordersRepository;
+    private RecordingLocalEventBusConsumer                                       recordingLocalEventBusConsumer;
+    private Disposable                                                           persistedEventFlux;
+    private List<PersistedEvent>                                                 asynchronousOrderEventsReceived;
 
     @BeforeEach
     void setup() {
@@ -74,14 +76,14 @@ class OrderWithStateAggregateRootRepositoryTest {
         recordingLocalEventBusConsumer = new RecordingLocalEventBusConsumer();
         eventStore.localEventBus().addSyncSubscriber(recordingLocalEventBusConsumer);
 
-        ordersRepository = AggregateRootRepository.from(eventStore,
-                                                        standardSingleTenantConfigurationUsingJackson(ORDERS,
-                                                                                                      createObjectMapper(),
-                                                                                                      AggregateIdSerializer.serializerFor(OrderId.class),
-                                                                                                      IdentifierColumnType.UUID,
-                                                                                                      JSONColumnType.JSONB),
-                                                        defaultConstructorFactory(),
-                                                        OrderWithState.class);
+        ordersRepository = StatefulAggregateRepository.from(eventStore,
+                                                            standardSingleTenantConfigurationUsingJackson(ORDERS,
+                                                                                                          createObjectMapper(),
+                                                                                                          AggregateIdSerializer.serializerFor(OrderId.class),
+                                                                                                          IdentifierColumnType.UUID,
+                                                                                                          JSONColumnType.JSONB),
+                                                            reflectionBasedAggregateRootFactory(),
+                                                            OrderWithState.class);
 
         asynchronousOrderEventsReceived = new ArrayList<>();
         persistedEventFlux = eventStore.pollEvents(ORDERS,
@@ -117,8 +119,8 @@ class OrderWithStateAggregateRootRepositoryTest {
         order.addProduct(productId, productQuantity);
 
         // Check state change
-        assertThat(order.uncommittedChanges().size()).isEqualTo(2);
-        var uncommittedEvents = new ArrayList<>(order.uncommittedChanges());
+        assertThat(order.getUncommittedChanges().size()).isEqualTo(2);
+        var uncommittedEvents = order.getUncommittedChanges().events;
         assertThat((CharSequence) order.aggregateId()).isEqualTo(orderId);
         assertThat(order.state().productAndQuantity.get(productId)).isEqualTo(productQuantity);
         assertThat(order.state().accepted).isFalse();
@@ -129,7 +131,7 @@ class OrderWithStateAggregateRootRepositoryTest {
         });
 
         // Then
-        assertThat(order.uncommittedChanges().size()).isEqualTo(0);
+        assertThat(order.getUncommittedChanges().size()).isEqualTo(0);
         assertThat(recordingLocalEventBusConsumer.beforeCommitPersistedEvents.size()).isEqualTo(2);
         assertThat(recordingLocalEventBusConsumer.afterCommitPersistedEvents.size()).isEqualTo(2);
         Awaitility.waitAtMost(Duration.ofMillis(300))
@@ -212,15 +214,15 @@ class OrderWithStateAggregateRootRepositoryTest {
         var uncommittedEvents = new ArrayList<>();
         var changedOrder = unitOfWorkFactory.withUnitOfWork(unitOfWork -> {
             var loadedOrder = ordersRepository.load(orderId);
-            assertThat(loadedOrder.uncommittedChanges().size()).isEqualTo(0);
+            assertThat(loadedOrder.getUncommittedChanges().size()).isEqualTo(0);
             assertThat((CharSequence) loadedOrder.aggregateId()).isEqualTo(orderId);
             assertThat(loadedOrder.state().productAndQuantity.get(productId)).isEqualTo(productQuantity);
             assertThat(loadedOrder.state().accepted).isFalse();
 
             loadedOrder.accept();
 
-            assertThat(loadedOrder.uncommittedChanges().size()).isEqualTo(1);
-            uncommittedEvents.addAll(loadedOrder.uncommittedChanges());
+            assertThat(loadedOrder.getUncommittedChanges().size()).isEqualTo(1);
+            uncommittedEvents.addAll(loadedOrder.getUncommittedChanges().events);
             assertThat((CharSequence) loadedOrder.aggregateId()).isEqualTo(orderId);
             assertThat(loadedOrder.state().productAndQuantity.get(productId)).isEqualTo(productQuantity);
             assertThat(loadedOrder.state().accepted).isTrue();
@@ -229,7 +231,7 @@ class OrderWithStateAggregateRootRepositoryTest {
         });
 
         // Then
-        assertThat(changedOrder.uncommittedChanges().size()).isEqualTo(0);
+        assertThat(changedOrder.getUncommittedChanges().size()).isEqualTo(0);
         assertThat(recordingLocalEventBusConsumer.beforeCommitPersistedEvents.size()).isEqualTo(1);
         assertThat(recordingLocalEventBusConsumer.afterCommitPersistedEvents.size()).isEqualTo(1);
         Awaitility.waitAtMost(Duration.ofMillis(300))

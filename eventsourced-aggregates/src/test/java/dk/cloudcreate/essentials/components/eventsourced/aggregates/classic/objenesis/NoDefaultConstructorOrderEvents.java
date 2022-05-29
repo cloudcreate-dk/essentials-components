@@ -1,7 +1,7 @@
 package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.objenesis;
 
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.Event;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.Event;
 
 public final class NoDefaultConstructorOrderEvents {
     // ------------------------------------------------------------------ Events -------------------------------------------------------------------------------

@@ -1,7 +1,8 @@
 package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.objenesis;
 
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.*;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.*;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.*;
 
 import java.util.*;
 
@@ -9,12 +10,12 @@ import static dk.cloudcreate.essentials.components.eventsourced.aggregates.class
 import static dk.cloudcreate.essentials.shared.FailFast.requireNonNull;
 
 /**
- * Example Order aggregate for testing {@link AggregateRoot} and {@link AggregateRootRepository}<br>
- * Requires that {@link AggregateRootRepository} instance creation
- * is configured to use {@link AggregateRootInstanceFactory#objenesisAggregateRootFactory()},
+ * Example Order aggregate for testing {@link AggregateRoot} and {@link StatefulAggregateRepository}<br>
+ * Requires that {@link StatefulAggregateRepository} instance creation
+ * is configured to use {@link StatefulAggregateInstanceFactory#objenesisAggregateRootFactory()},
  * since the aggregate doesn't have a default constructor
  */
-public class Order extends AggregateRoot<OrderId, Order> {
+public class Order extends AggregateRoot<OrderId, Event<OrderId>, Order> {
     Map<ProductId, Integer> productAndQuantity;
     boolean                 accepted;
 

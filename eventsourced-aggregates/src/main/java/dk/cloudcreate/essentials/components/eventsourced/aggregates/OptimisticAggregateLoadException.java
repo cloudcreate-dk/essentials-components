@@ -1,17 +1,17 @@
-package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic;
+package dk.cloudcreate.essentials.components.eventsourced.aggregates;
 
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.EventStoreException;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.EventOrder;
 
 import static dk.cloudcreate.essentials.shared.MessageFormatter.msg;
 
-public class OptimisticAggregateRootLoadException extends EventStoreException {
-    public final Object                               aggregateId;
-    public final Class<? extends AggregateRoot<?, ?>> aggregateType;
-    public final EventOrder                           expectedLatestEventOrder;
-    public final EventOrder                           actualLatestEventOrder;
+public class OptimisticAggregateLoadException extends EventStoreException {
+    public final Object                           aggregateId;
+    public final Class<? extends Aggregate<?, ?>> aggregateType;
+    public final EventOrder                       expectedLatestEventOrder;
+    public final EventOrder                       actualLatestEventOrder;
 
-    public OptimisticAggregateRootLoadException(Object aggregateId, Class<? extends AggregateRoot<?, ?>> aggregateType, EventOrder expectedLatestEventOrder, EventOrder actualLatestEventOrder) {
+    public OptimisticAggregateLoadException(Object aggregateId, Class<? extends Aggregate<?, ?>> aggregateType, EventOrder expectedLatestEventOrder, EventOrder actualLatestEventOrder) {
         super(msg("Expected expectedLatestEventOrder '{}' for '{}' with id '{}' but found '{}' (actualLatestEventOrder) in the EventStore",
                   expectedLatestEventOrder,
                   aggregateType.getName(),

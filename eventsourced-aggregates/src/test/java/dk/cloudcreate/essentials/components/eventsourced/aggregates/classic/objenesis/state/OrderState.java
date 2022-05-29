@@ -2,11 +2,12 @@ package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.obj
 
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.objenesis.NoDefaultConstructorOrderEvents.*;
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.state.AggregateState;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.Event;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.state.AggregateState;
 
 import java.util.*;
 
-public class OrderState extends AggregateState<OrderId> {
+public class OrderState extends AggregateState<OrderId, Event<OrderId>> {
     // Fields are public for framework tests performed - this isn't a pattern to replicate in a business application
     public Map<ProductId, Integer> productAndQuantity;
     public boolean                 accepted;

@@ -1,20 +1,21 @@
 package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.objenesis.state;
 
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.*;
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.AggregateRootInstanceFactory.DefaultConstructorAggregateRootInstanceFactory;
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.objenesis.NoDefaultConstructorOrderEvents.*;
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.state.AggregateRootWithState;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.StatefulAggregateInstanceFactory.ReflectionBasedAggregateInstanceFactory;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.StatefulAggregateRepository;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.*;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.state.AggregateRootWithState;
 
 import static dk.cloudcreate.essentials.shared.FailFast.requireNonNull;
 
 /**
- * Example Order aggregate for testing {@link AggregateRoot} and {@link AggregateRootRepository}
+ * Example Order aggregate for testing {@link AggregateRoot} and {@link StatefulAggregateRepository}
  */
-public class OrderWithState extends AggregateRootWithState<OrderId, OrderState, OrderWithState> {
+public class OrderWithState extends AggregateRootWithState<OrderId, Event<OrderId>, OrderState, OrderWithState> {
 
     /**
-     * Needed if we use {@link DefaultConstructorAggregateRootInstanceFactory}
+     * Needed if we use {@link ReflectionBasedAggregateInstanceFactory}
      */
     public OrderWithState() {
     }
