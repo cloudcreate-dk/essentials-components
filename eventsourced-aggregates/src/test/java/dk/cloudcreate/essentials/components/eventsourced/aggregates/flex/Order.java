@@ -12,7 +12,7 @@ public class Order extends FlexAggregate<OrderId, Order> {
 
     // ---------------- Business methods ------------------
 
-    public static EventsToPersist<OrderId> createNewOrder(OrderId orderId,
+    public static EventsToPersist<OrderId, Object> createNewOrder(OrderId orderId,
                                                           CustomerId orderingCustomerId,
                                                           int orderNumber) {
         // Normally you will ensure that orderId is never NULL, but to perform certain tests we need to option to allow this to be null
@@ -21,7 +21,7 @@ public class Order extends FlexAggregate<OrderId, Order> {
         return newAggregateEvents(orderId, new OrderAdded(orderId, orderingCustomerId, orderNumber));
     }
 
-    public EventsToPersist<OrderId> addProduct(ProductId productId, int quantity) {
+    public EventsToPersist<OrderId, Object> addProduct(ProductId productId, int quantity) {
         requireNonNull(productId, "You must provide a productId");
         if (accepted) {
             throw new IllegalStateException("Order is already accepted");
@@ -29,7 +29,7 @@ public class Order extends FlexAggregate<OrderId, Order> {
         return events(new ProductAddedToOrder(aggregateId(), productId, quantity));
     }
 
-    public EventsToPersist<OrderId> adjustProductQuantity(ProductId productId, int newQuantity) {
+    public EventsToPersist<OrderId, Object> adjustProductQuantity(ProductId productId, int newQuantity) {
         requireNonNull(productId, "You must provide a productId");
         if (accepted) {
             throw new IllegalStateException("Order is already accepted");
@@ -40,7 +40,7 @@ public class Order extends FlexAggregate<OrderId, Order> {
         return noEvents();
     }
 
-    public EventsToPersist<OrderId> removeProduct(ProductId productId) {
+    public EventsToPersist<OrderId, Object> removeProduct(ProductId productId) {
         requireNonNull(productId, "You must provide a productId");
         if (accepted) {
             throw new IllegalStateException("Order is already accepted");
@@ -51,7 +51,7 @@ public class Order extends FlexAggregate<OrderId, Order> {
         return noEvents();
     }
 
-    public EventsToPersist<OrderId> accept() {
+    public EventsToPersist<OrderId, Object> accept() {
         if (accepted) {
             return noEvents();
         }

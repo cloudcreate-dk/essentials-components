@@ -183,7 +183,7 @@ public class FlexAggregateRepositoryIT {
         // Then
         assertThat(result.aggregateId().toString()).isEqualTo(orderId.toString());
         assertThat(result.productAndQuantity.get(productId)).isEqualTo(10);
-        assertThat(result.eventOrderOfLastAppliedHistoricEvent()).isEqualTo(EventOrder.of(1));
+        assertThat(result.eventOrderOfLastRehydratedEvent()).isEqualTo(EventOrder.of(1));
     }
 
     @DisplayName("Load with correct expectedLatestEventOrder")
@@ -207,7 +207,7 @@ public class FlexAggregateRepositoryIT {
         assertThat(result.aggregateId().toString()).isEqualTo(orderId.toString());
         assertThat(result.productAndQuantity.get(productId)).isEqualTo(10);
         assertThat(result.accepted).isTrue();
-        assertThat(result.eventOrderOfLastAppliedHistoricEvent()).isEqualTo(EventOrder.of(2));
+        assertThat(result.eventOrderOfLastRehydratedEvent()).isEqualTo(EventOrder.of(2));
     }
 
     @DisplayName("Load with wrong expectedLatestEventOrder")
@@ -227,7 +227,7 @@ public class FlexAggregateRepositoryIT {
         // When
         assertThatThrownBy(() -> unitOfWorkFactory.withUnitOfWork(uow -> ordersRepository.load(orderId, 0L)))
                 .isInstanceOf(UnitOfWorkException.class)
-                .getCause().isInstanceOf(OptimisticFlexAggregateLoadException.class);
+                .getCause().isInstanceOf(OptimisticAggregateLoadException.class);
     }
 
     private static class TestPersistableEventMapper implements PersistableEventMapper {

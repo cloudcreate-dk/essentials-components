@@ -1,9 +1,9 @@
-package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic;
+package dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.state;
 
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.state.AggregateRootWithState;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.EventHandler;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.EventStore;
-import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.AggregateEventStream;
+import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.EventOrder;
 import dk.cloudcreate.essentials.shared.reflection.invocation.*;
 import dk.cloudcreate.essentials.shared.types.GenericType;
 
@@ -14,101 +14,74 @@ import static dk.cloudcreate.essentials.shared.FailFast.*;
 import static dk.cloudcreate.essentials.shared.MessageFormatter.msg;
 
 /**
- * A specialized and opinionated mutable {@link Aggregate} design<br>
- * This {@link AggregateRoot} is designed to work with Class based Event's that inherit from {@link Event}.<br>
- * This design is deliberate and will manage a lot of things for you as a developer at the cost of some flexibility.<p>
- * Specifically you only have to supply the Aggregate ID, through {@link Event#aggregateId()}, on the FIRST/initial {@link Event}
- * that's being applied to the {@link AggregateRoot} using the {@link #apply(Event)} method.<br>
- * Every consecutive {@link Event} applied will automatically have its {@link Event#aggregateId(Object)} method called IF it doesn't already have a value.<br>
- * <b>I.e. you can be lazy and skip setting the aggregate id on the Event if you don't want to.</b><br>
- * The {@link AggregateRoot} also automatically keeps track of the {@link Event#eventOrder()} value and will set it for you and ensure that it's consecutively growing.
- * <p>
- * Note: <strong>The {@link AggregateRoot} works best in combination with the {@link AggregateRootRepository}</strong>
- * <p>
- * You don't have to use the {@link AggregateRoot} IF it doesn't fit your purpose. It's always possible to build your own {@link Aggregate} concept.<br>
+ * Base class for the state object associated with {@link AggregateRootWithState}.<br>
+ * When this is combined with the {@link AggregateRootWithState} when the {@link AggregateRootWithState}
+ * will contain the command methods and the {@link AggregateState} contains the state fields and the
+ * {@link EventHandler} annotated methods.
  *
- * @param <ID>             the aggregate id type
- * @param <AGGREGATE_TYPE> the aggregate self type (i.e. your concrete aggregate type)
- * @see AggregateRootWithState
+ * @param <ID>         the aggregate id type
+ * @param <EVENT_TYPE> the type of event
  */
-public abstract class AggregateRoot<ID, AGGREGATE_TYPE extends AggregateRoot<ID, AGGREGATE_TYPE>> implements Aggregate<ID> {
-    public static long NO_EVENTS_HAVE_BEEN_APPLIED = -1;
-
+public abstract class AggregateState<ID, EVENT_TYPE extends Event<ID>> {
     private PatternMatchingMethodInvoker<Event<ID>> invoker;
     private ID                                      aggregateId;
-    private List<Event<ID>>                         uncommittedChanges;
+    private List<EVENT_TYPE>                        uncommittedChanges;
     /**
      * Zero based event order
      */
-    private Long                                    eventOrderOfLastAppliedEvent;
+    private EventOrder                              eventOrderOfLastAppliedEvent;
     private boolean                                 hasBeenRehydrated;
     private boolean                                 isRehydrating;
+    private EventOrder                              eventOrderOfLastRehydratedEvent;
 
-    public AggregateRoot() {
-        initialize();
-    }
-
-    /**
-     * Initialize the aggregate, e.g. setting up state objects, {@link PatternMatchingMethodInvoker}, etc.
-     */
-    protected void initialize() {
+    public AggregateState() {
         invoker = new PatternMatchingMethodInvoker<>(this,
                                                      new SingleArgumentAnnotatedMethodPatternMatcher<>(EventHandler.class,
                                                                                                        new GenericType<>() {
                                                                                                        }),
                                                      InvocationStrategy.InvokeMostSpecificTypeMatched);
+
     }
 
-    /**
-     * Effectively performs a leftFold over all the previously persisted events related to this aggregate instance
-     *
-     * @param persistedEvents the previous persisted events related to this aggregate instance, aka. the aggregates history
-     * @return the same aggregate instance (self)
-     */
-    @SuppressWarnings("unchecked")
-    public AGGREGATE_TYPE rehydrate(AggregateEventStream<ID> persistedEvents) {
-        requireNonNull(persistedEvents, "You must provide a persistedEvents stream");
-        return rehydrate(persistedEvents.map(persistedEvent -> persistedEvent.event().deserialize()));
-    }
-
-    /**
-     * Effectively performs a leftFold over all the previous events related to this aggregate instance
-     *
-     * @param previousEvents the previous events related to this aggregate instance, aka. the aggregates history
-     * @return the same aggregate instance (self)
-     */
-    @SuppressWarnings("unchecked")
-    public AGGREGATE_TYPE rehydrate(Stream<Event<ID>> previousEvents) {
+    public void rehydrate(Stream<EVENT_TYPE> previousEvents) {
         requireNonNull(previousEvents, "You must provide a previousEvents stream");
         isRehydrating = true;
         previousEvents.forEach(event -> {
             if (aggregateId == null) {
                 // The aggregate doesn't know its aggregate id, hence the FIRST historic event being applied MUST know it
                 aggregateId = event.aggregateId();
-                requireNonNull(aggregateId, msg("The first previous/historic Event '{}' applied to Aggregate '{}' didn't contain an aggregateId",
+                requireNonNull(aggregateId, msg("The first previous/historic Event '{}' applied to Aggregate {}'s state didn't contain an aggregateId",
                                                 event.getClass().getName(),
                                                 this.getClass().getName()));
             }
             applyEventToTheAggregate(event);
             eventOrderOfLastAppliedEvent = event.eventOrder();
         });
+        eventOrderOfLastRehydratedEvent = eventOrderOfLastAppliedEvent;
         isRehydrating = false;
         hasBeenRehydrated = true;
-        return (AGGREGATE_TYPE) this;
+    }
+
+    public EventOrder getEventOrderOfLastAppliedEvent() {
+        return eventOrderOfLastAppliedEvent;
+    }
+
+    public EventOrder getEventOrderOfLastRehydratedEvent() {
+        return eventOrderOfLastRehydratedEvent;
     }
 
     /**
      * Apply a new non persisted/uncommitted Event to this aggregate instance.<br>
      * If it is the very FIRST {@link Event} that is being applied then {@link Event#aggregateId()} MUST return the ID of the aggregate the event relates to<br>
-     * Every consecutive {@link Event} applied will have its {@link Event#aggregateId(Object)} method called IF it doesn't already have a value. I.e. you can be lazy and skip setting the aggregate id
+     * Every consecutive {@link Event} applied will have its {@link Event#aggregateId(Object)}  method called IF it doesn't already have a value. I.e. you can be lazy and skip setting the aggregate id
      * on the Event if you don't want to.<p>
      * The {@link AggregateRoot} automatically keeps track of the {@link Event#eventOrder()} value and will set it for you and ensure that it's growing consecutively.
      *
      * @param event the event to apply
      */
-    protected void apply(Event<ID> event) {
+    protected final void apply(EVENT_TYPE event) {
         requireNonNull(event, "You must supply an event");
-        ID eventAggregateId = event.aggregateId();
+        var eventAggregateId = event.aggregateId();
         if (this.aggregateId == null) {
             // The aggregate doesn't know its aggregate id, hence the FIRST event being applied MUST know it
             this.aggregateId = eventAggregateId;
@@ -127,21 +100,20 @@ public abstract class AggregateRoot<ID, AGGREGATE_TYPE extends AggregateRoot<ID,
                                                                                 this.getClass().getName(),
                                                                                 this.aggregateId));
         }
-        long nextEventOrderToBeApplied = eventOrderOfLastAppliedEvent() + 1L;
+        var nextEventOrderToBeApplied = eventOrderOfLastAppliedEvent().increaseAndGet();
         event.eventOrder(nextEventOrderToBeApplied);
         applyEventToTheAggregate(event);
         eventOrderOfLastAppliedEvent = nextEventOrderToBeApplied;
         _uncommittedChanges().add(event);
     }
 
-    @Override
     public ID aggregateId() {
         requireNonNull(aggregateId, "The aggregate id has not been set on the AggregateRoot and not supplied using one of the Event applied to it. At least the first event MUST supply it");
         return aggregateId;
     }
 
     /**
-     * Has {@link #rehydrate(Stream)}  or {@link #rehydrate(AggregateEventStream)} been used
+     * Has {@link #rehydrate(Stream)} been used
      */
     public boolean hasBeenRehydrated() {
         return hasBeenRehydrated;
@@ -163,10 +135,6 @@ public abstract class AggregateRoot<ID, AGGREGATE_TYPE extends AggregateRoot<ID,
      * @see #isRehydrating()
      */
     protected void applyEventToTheAggregate(Event<ID> event) {
-        if (invoker == null) {
-            // Instance was created by Objenesis
-            initialize();
-        }
         invoker.invoke(event, unmatchedEvent -> {
             // Ignore unmatched events as Aggregates don't necessarily need handle every event
         });
@@ -174,17 +142,17 @@ public abstract class AggregateRoot<ID, AGGREGATE_TYPE extends AggregateRoot<ID,
 
     /**
      * Get the {@link Event#eventOrder() of the last {}@link Event} that was applied to the {@link AggregateRoot}
-     * (either using {@link #rehydrate(AggregateEventStream)}/{@link #rehydrate(Stream)} or using {@link #apply(Event)}
+     * (either using {@link #rehydrate(Stream)} or using {@link #apply(Event)}
      *
-     * @return the event order of the last applied {@link Event} or {@link #NO_EVENTS_HAVE_BEEN_APPLIED} in case no
+     * @return the event order of the last applied {@link Event} or {@link EventOrder#NO_EVENTS_PERSISTED} in case no
      * events has ever been applied to the aggregate
      */
-    public long eventOrderOfLastAppliedEvent() {
+    public final EventOrder eventOrderOfLastAppliedEvent() {
         if (eventOrderOfLastAppliedEvent == null) {
             // Since the aggregate instance MAY have been created using Objenesis (which doesn't
-            // initialize fields nor call a constructor) we have to be defensive and lazy way initialize
+            // initialize fields nor calls a constructor) we have to be defensive and lazy way initialize
             // the eventOrderOfLastAppliedEvent
-            eventOrderOfLastAppliedEvent = NO_EVENTS_HAVE_BEEN_APPLIED;
+            eventOrderOfLastAppliedEvent = EventOrder.NO_EVENTS_PERSISTED;
         }
         return eventOrderOfLastAppliedEvent;
     }
@@ -193,7 +161,7 @@ public abstract class AggregateRoot<ID, AGGREGATE_TYPE extends AggregateRoot<ID,
      * The the events that have been applied to this aggregate instance but not yet persisted to
      * the underlying {@link EventStore}
      */
-    public List<Event<ID>> uncommittedChanges() {
+    public List<EVENT_TYPE> uncommittedChanges() {
         return _uncommittedChanges();
     }
 
@@ -211,11 +179,10 @@ public abstract class AggregateRoot<ID, AGGREGATE_TYPE extends AggregateRoot<ID,
      *
      * @return the initialized uncommitted changes
      */
-    private List<Event<ID>> _uncommittedChanges() {
+    private List<EVENT_TYPE> _uncommittedChanges() {
         if (uncommittedChanges == null) {
             uncommittedChanges = new ArrayList<>();
         }
         return uncommittedChanges;
     }
-
 }

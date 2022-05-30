@@ -1,19 +1,20 @@
 package dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.spring.test_data;
 
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.*;
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.AggregateRootInstanceFactory.DefaultConstructorAggregateRootInstanceFactory;
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.state.AggregateRootWithState;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.StatefulAggregateInstanceFactory.ReflectionBasedAggregateInstanceFactory;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.StatefulAggregateRepository;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.AggregateRoot;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.state.AggregateRootWithState;
 
-import static dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.spring.test_data.OrderEvents.*;
+import static dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.spring.test_data.OrderEvent.*;
 import static dk.cloudcreate.essentials.shared.FailFast.requireNonNull;
 
 /**
- * Example Order aggregate for testing {@link AggregateRoot} and {@link AggregateRootRepository}
+ * Example Order aggregate for testing {@link AggregateRoot} and {@link StatefulAggregateRepository}
  */
-public class Order extends AggregateRootWithState<OrderId, OrderState, Order> {
+public class Order extends AggregateRootWithState<OrderId, OrderEvent, OrderState, Order> {
 
     /**
-     * Needed if we use {@link DefaultConstructorAggregateRootInstanceFactory}
+     * Needed if we use {@link ReflectionBasedAggregateInstanceFactory}
      */
     public Order() {
     }

@@ -1,6 +1,7 @@
 package dk.cloudcreate.essentials.components.eventsourced.aggregates.flex;
 
 import dk.cloudcreate.essentials.components.common.transaction.*;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.*;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.persistence.AggregateTypeConfiguration;
@@ -88,8 +89,8 @@ public interface FlexAggregateRepository<ID, AGGREGATE_TYPE extends FlexAggregat
      * @param aggregateId              the id of the aggregate we want to load
      * @param expectedLatestEventOrder the expected {@link PersistedEvent#eventOrder()} of the last event stored in relation to the given aggregate instance
      * @return an {@link Optional} with the matching {@link FlexAggregate} instance if it exists, otherwise it will return an {@link Optional#empty()}
-     * @throws OptimisticFlexAggregateLoadException in case the {@link PersistedEvent#eventOrder()} of the last event stored in relation to the given aggregate instance
-     *                                              is different from the <code>expectedLatestEventOrder</code>
+     * @throws OptimisticAggregateLoadException in case the {@link PersistedEvent#eventOrder()} of the last event stored in relation to the given aggregate instance
+     *                                          is different from the <code>expectedLatestEventOrder</code>
      */
     default Optional<AGGREGATE_TYPE> tryLoad(ID aggregateId, long expectedLatestEventOrder) {
         return tryLoad(aggregateId, Optional.of(expectedLatestEventOrder));
@@ -104,8 +105,8 @@ public interface FlexAggregateRepository<ID, AGGREGATE_TYPE extends FlexAggregat
      * @param aggregateId              the id of the aggregate we want to load
      * @param expectedLatestEventOrder Optional with the expected {@link PersistedEvent#eventOrder()} of the last event stored in relation to the given aggregate instance (if any)
      * @return an {@link Optional} with the matching {@link FlexAggregate} instance if it exists, otherwise it will return an {@link Optional#empty()}
-     * @throws OptimisticFlexAggregateLoadException in case the {@link PersistedEvent#eventOrder()} of the last event stored in relation to the given aggregate instance
-     *                                              is different from the <code>expectedLatestEventOrder</code>
+     * @throws OptimisticAggregateLoadException in case the {@link PersistedEvent#eventOrder()} of the last event stored in relation to the given aggregate instance
+     *                                          is different from the <code>expectedLatestEventOrder</code>
      */
     Optional<AGGREGATE_TYPE> tryLoad(ID aggregateId, Optional<Long> expectedLatestEventOrder);
 
@@ -117,8 +118,8 @@ public interface FlexAggregateRepository<ID, AGGREGATE_TYPE extends FlexAggregat
      *
      * @param aggregateId the id of the aggregate we want to load
      * @return an {@link Optional} with the matching {@link FlexAggregate} instance if it exists, otherwise it will return an {@link Optional#empty()}
-     * @throws OptimisticFlexAggregateLoadException in case the {@link PersistedEvent#eventOrder()} of the last event stored in relation to the given aggregate instance
-     *                                              is different from the <code>expectedLatestEventOrder</code>
+     * @throws OptimisticAggregateLoadException in case the {@link PersistedEvent#eventOrder()} of the last event stored in relation to the given aggregate instance
+     *                                          is different from the <code>expectedLatestEventOrder</code>
      */
     default Optional<AGGREGATE_TYPE> tryLoad(ID aggregateId) {
         return tryLoad(aggregateId, Optional.empty());
@@ -171,7 +172,7 @@ public interface FlexAggregateRepository<ID, AGGREGATE_TYPE extends FlexAggregat
      * @param eventsToPersist the events to persist to the underlying {@link EventStore} (a result of a Command method
      *                        invocation on an {@link FlexAggregate} instance
      */
-    void persist(EventsToPersist<ID> eventsToPersist);
+    void persist(EventsToPersist<ID, Object> eventsToPersist);
 
     // TODO: Add loadReadOnly (that doesn't require a UnitOfWork), getAllAggregateId's, loadByIds, loadAll, query, etc.
 
@@ -256,10 +257,10 @@ public interface FlexAggregateRepository<ID, AGGREGATE_TYPE extends FlexAggregat
                                   aggregateId,
                                   expectedLatestEventOrder.get(),
                                   lastEventPersisted.eventOrder());
-                        throw new OptimisticFlexAggregateLoadException(aggregateId,
-                                                                       aggregateRootImplementationType,
-                                                                       expectedLatestEventOrder.map(EventOrder::of).get(),
-                                                                       lastEventPersisted.eventOrder());
+                        throw new OptimisticAggregateLoadException(aggregateId,
+                                                                   aggregateRootImplementationType,
+                                                                   expectedLatestEventOrder.map(EventOrder::of).get(),
+                                                                   lastEventPersisted.eventOrder());
                     }
 
                 }
@@ -275,7 +276,7 @@ public interface FlexAggregateRepository<ID, AGGREGATE_TYPE extends FlexAggregat
         }
 
         @Override
-        public void persist(EventsToPersist<ID> eventsToPersist) {
+        public void persist(EventsToPersist<ID, Object> eventsToPersist) {
             log.debug("Adding {} with id '{}' to the current UnitOfWork so it will be persisted at commit time",
                       aggregateRootImplementationType.getName(),
                       eventsToPersist.aggregateId);
@@ -292,41 +293,42 @@ public interface FlexAggregateRepository<ID, AGGREGATE_TYPE extends FlexAggregat
          * The {@link UnitOfWorkLifecycleCallback} that's responsible for persisting {@link EventsToPersist} that were a side effect of command methods invoked on
          * {@link FlexAggregate} instances during the {@link UnitOfWork} - see {@link FlexAggregateRepository#persist(EventsToPersist)}
          */
-        private class FlexAggregateRepositoryUnitOfWorkLifecycleCallback implements UnitOfWorkLifecycleCallback<EventsToPersist<ID>> {
+        private class FlexAggregateRepositoryUnitOfWorkLifecycleCallback implements UnitOfWorkLifecycleCallback<EventsToPersist<ID, Object>> {
 
             @Override
-            public void beforeCommit(UnitOfWork unitOfWork, List<EventsToPersist<ID>> associatedResources) {
+            public void beforeCommit(UnitOfWork unitOfWork, List<EventsToPersist<ID, Object>> associatedResources) {
                 log.trace("beforeCommit processing {} '{}' registered with the UnitOfWork being committed", associatedResources.size(), aggregateRootImplementationType.getName());
                 associatedResources.forEach(eventsToPersist -> {
                     log.trace("beforeCommit processing '{}' with id '{}'", aggregateRootImplementationType.getName(), eventsToPersist.aggregateId);
-                    if (eventsToPersist.eventsToPersist.isEmpty()) {
+                    if (eventsToPersist.events.isEmpty()) {
                         log.trace("No changes detected for '{}' with id '{}'", aggregateRootImplementationType.getName(), eventsToPersist.aggregateId);
                     } else {
                         if (log.isTraceEnabled()) {
-                            log.trace("Persisting {} event(s) related to '{}' with id '{}': {}", eventsToPersist.eventsToPersist.size(), aggregateRootImplementationType.getName(), eventsToPersist.aggregateId, eventsToPersist.eventsToPersist.stream().map(persistableEvent -> persistableEvent.getClass().getName()).reduce((s, s2) -> s + ", " + s2));
+                            log.trace("Persisting {} event(s) related to '{}' with id '{}': {}", eventsToPersist.events.size(), aggregateRootImplementationType.getName(), eventsToPersist.aggregateId, eventsToPersist.events.stream().map(persistableEvent -> persistableEvent.getClass().getName()).reduce((s, s2) -> s + ", " + s2));
                         } else {
-                            log.debug("Persisting {} event(s) related to '{}' with id '{}'", eventsToPersist.eventsToPersist.size(), aggregateRootImplementationType.getName(), eventsToPersist.aggregateId);
+                            log.debug("Persisting {} event(s) related to '{}' with id '{}'", eventsToPersist.events.size(), aggregateRootImplementationType.getName(), eventsToPersist.aggregateId);
                         }
                         eventStore.appendToStream(eventStreamConfiguration.aggregateType,
                                                   eventsToPersist.aggregateId,
-                                                  eventsToPersist.eventsToPersist);
+                                                  eventsToPersist.eventOrderOfLastRehydratedEvent,
+                                                  eventsToPersist.events);
                         eventsToPersist.markEventsAsCommitted();
                     }
                 });
             }
 
             @Override
-            public void afterCommit(UnitOfWork unitOfWork, java.util.List<EventsToPersist<ID>> associatedResources) {
+            public void afterCommit(UnitOfWork unitOfWork, List<EventsToPersist<ID, Object>> associatedResources) {
 
             }
 
             @Override
-            public void beforeRollback(UnitOfWork unitOfWork, java.util.List<EventsToPersist<ID>> associatedResources, Exception causeOfTheRollback) {
+            public void beforeRollback(UnitOfWork unitOfWork, java.util.List<EventsToPersist<ID, Object>> associatedResources, Exception causeOfTheRollback) {
 
             }
 
             @Override
-            public void afterRollback(UnitOfWork unitOfWork, java.util.List<EventsToPersist<ID>> associatedResources, Exception causeOfTheRollback) {
+            public void afterRollback(UnitOfWork unitOfWork, java.util.List<EventsToPersist<ID, Object>> associatedResources, Exception causeOfTheRollback) {
 
             }
         }

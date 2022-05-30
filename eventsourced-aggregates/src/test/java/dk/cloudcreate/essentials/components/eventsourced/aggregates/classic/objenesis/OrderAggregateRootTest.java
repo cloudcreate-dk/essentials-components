@@ -1,8 +1,10 @@
 package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.objenesis;
 
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.*;
-import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.*;
 import dk.cloudcreate.essentials.components.eventsourced.aggregates.classic.objenesis.NoDefaultConstructorOrderEvents.*;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.StatefulAggregateInstanceFactory;
+import dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic.InitialEventIsMissingAggregateIdException;
+import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.EventOrder;
 import org.junit.jupiter.api.*;
 
 import static org.assertj.core.api.Assertions.*;
@@ -29,36 +31,36 @@ class OrderAggregateRootTest {
                               orderNumber);
 
         // Then
-        assertThat(order.uncommittedChanges().size()).isEqualTo(1);
-        assertThat(order.uncommittedChanges().get(0)).isInstanceOf(OrderAdded.class);
+        assertThat(order.getUncommittedChanges().size()).isEqualTo(1);
+        assertThat(order.getUncommittedChanges().get(0)).isInstanceOf(OrderAdded.class);
 
-        var orderAddedEvent = (OrderAdded) order.uncommittedChanges().get(0);
+        var orderAddedEvent = (OrderAdded) order.getUncommittedChanges().get(0);
         assertThat((CharSequence) orderAddedEvent.aggregateId()).isEqualTo(orderId);
         assertThat((CharSequence) orderAddedEvent.orderingCustomerId).isEqualTo(orderingCustomerId);
         assertThat(orderAddedEvent.orderNumber).isEqualTo(orderNumber);
-        assertThat(orderAddedEvent.eventOrder()).isEqualTo(0);
+        assertThat(orderAddedEvent.eventOrder()).isEqualTo(EventOrder.of(0));
 
         assertThat((CharSequence) order.aggregateId()).isEqualTo(orderId);
-        assertThat(order.eventOrderOfLastAppliedEvent()).isEqualTo(0);
+        assertThat(order.eventOrderOfLastAppliedEvent()).isEqualTo(EventOrder.of(0));
     }
 
     @Test
-    void verify_markChangesAsCommitted_resets_uncomittedChanges() {
+    void verify_markChangesAsCommitted_resets_uncommittedChanges() {
         // Given
         var orderId            = OrderId.random();
         var orderingCustomerId = CustomerId.random();
         var orderNumber        = 123;
 
         var aggregate = new Order(orderId, orderingCustomerId, orderNumber);
-        assertThat(aggregate.uncommittedChanges().size()).isEqualTo(1);
+        assertThat(aggregate.getUncommittedChanges().size()).isEqualTo(1);
         assertThat((CharSequence) aggregate.aggregateId()).isEqualTo(orderId);
-        assertThat(aggregate.eventOrderOfLastAppliedEvent()).isEqualTo(0);
+        assertThat(aggregate.eventOrderOfLastAppliedEvent()).isEqualTo(EventOrder.of(0));
 
         // When
         aggregate.markChangesAsCommitted();
 
         // Then
-        assertThat(aggregate.uncommittedChanges().size()).isEqualTo(0);
+        assertThat(aggregate.getUncommittedChanges().size()).isEqualTo(0);
     }
 
     @Test
@@ -77,25 +79,25 @@ class OrderAggregateRootTest {
 
         assertThat((CharSequence) aggregate.aggregateId()).isEqualTo(orderId);
         assertThat(aggregate.productAndQuantity.get(productId)).isEqualTo(10);
-        assertThat(aggregate.uncommittedChanges().size()).isEqualTo(2);
-        assertThat(aggregate.eventOrderOfLastAppliedEvent()).isEqualTo(1);
+        assertThat(aggregate.getUncommittedChanges().size()).isEqualTo(2);
+        assertThat(aggregate.eventOrderOfLastAppliedEvent()).isEqualTo(EventOrder.of(1));
 
-        assertThat(aggregate.uncommittedChanges().get(1)).isInstanceOf(ProductAddedToOrder.class);
-        var productAddedEvent = (ProductAddedToOrder) aggregate.uncommittedChanges().get(1);
+        assertThat(aggregate.getUncommittedChanges().get(1)).isInstanceOf(ProductAddedToOrder.class);
+        var productAddedEvent = (ProductAddedToOrder) aggregate.getUncommittedChanges().get(1);
         assertThat((CharSequence) productAddedEvent.aggregateId()).isEqualTo(orderId);
         assertThat((CharSequence) productAddedEvent.productId).isEqualTo(productId);
         assertThat(productAddedEvent.quantity).isEqualTo(10);
-        assertThat(productAddedEvent.eventOrder()).isEqualTo(1);
+        assertThat(productAddedEvent.eventOrder()).isEqualTo(EventOrder.of(1));
 
         // when
-        var rehydratedAggregate = AggregateRootInstanceFactory.objenesisAggregateRootFactory().create(OrderId.class, Order.class)
-                                                              .rehydrate(aggregate.uncommittedChanges().stream());
+        var rehydratedAggregate = StatefulAggregateInstanceFactory.objenesisAggregateRootFactory().create(OrderId.class, Order.class)
+                                                                  .rehydrate(aggregate.getUncommittedChanges().stream());
 
         // then
         assertThat((CharSequence) rehydratedAggregate.aggregateId()).isEqualTo(orderId);
         assertThat(rehydratedAggregate.productAndQuantity.get(productId)).isEqualTo(10);
-        assertThat(rehydratedAggregate.uncommittedChanges().size()).isEqualTo(0);
-        assertThat(rehydratedAggregate.eventOrderOfLastAppliedEvent()).isEqualTo(1);
+        assertThat(rehydratedAggregate.getUncommittedChanges().size()).isEqualTo(0);
+        assertThat(rehydratedAggregate.eventOrderOfLastAppliedEvent()).isEqualTo(EventOrder.of(1));
     }
 
     @Test
@@ -114,25 +116,25 @@ class OrderAggregateRootTest {
 
         assertThat((CharSequence) aggregate.aggregateId()).isEqualTo(orderId);
         assertThat(aggregate.productAndQuantity.get(productId)).isEqualTo(10);
-        assertThat(aggregate.uncommittedChanges().size()).isEqualTo(2);
-        assertThat(aggregate.eventOrderOfLastAppliedEvent()).isEqualTo(1);
+        assertThat(aggregate.getUncommittedChanges().size()).isEqualTo(2);
+        assertThat(aggregate.eventOrderOfLastAppliedEvent()).isEqualTo(EventOrder.of(1));
 
         // when
-        var rehydratedAggregate = AggregateRootInstanceFactory.objenesisAggregateRootFactory().create(OrderId.class, Order.class)
-                                                              .rehydrate(aggregate.uncommittedChanges().stream());
+        var rehydratedAggregate = StatefulAggregateInstanceFactory.objenesisAggregateRootFactory().create(OrderId.class, Order.class)
+                                                                  .rehydrate(aggregate.getUncommittedChanges().stream());
         var newProductId = ProductId.random();
         rehydratedAggregate.addProduct(newProductId, 3);
 
         // then
-        assertThat(rehydratedAggregate.uncommittedChanges().size()).isEqualTo(1);
-        assertThat(rehydratedAggregate.eventOrderOfLastAppliedEvent()).isEqualTo(2);
-        assertThat(rehydratedAggregate.uncommittedChanges().get(0)).isInstanceOf(ProductAddedToOrder.class);
+        assertThat(rehydratedAggregate.getUncommittedChanges().size()).isEqualTo(1);
+        assertThat(rehydratedAggregate.eventOrderOfLastAppliedEvent()).isEqualTo(EventOrder.of(2));
+        assertThat(rehydratedAggregate.getUncommittedChanges().get(0)).isInstanceOf(ProductAddedToOrder.class);
 
-        var newProductAddedEvent = (ProductAddedToOrder) rehydratedAggregate.uncommittedChanges().get(0);
+        var newProductAddedEvent = (ProductAddedToOrder) rehydratedAggregate.getUncommittedChanges().get(0);
         assertThat((CharSequence) newProductAddedEvent.aggregateId()).isEqualTo(orderId);
         assertThat((CharSequence) newProductAddedEvent.productId).isEqualTo(newProductId);
         assertThat(newProductAddedEvent.quantity).isEqualTo(3);
-        assertThat(newProductAddedEvent.eventOrder()).isEqualTo(2);
+        assertThat(newProductAddedEvent.eventOrder()).isEqualTo(EventOrder.of(2));
 
         assertThat((CharSequence) rehydratedAggregate.aggregateId()).isEqualTo(orderId);
         assertThat(rehydratedAggregate.productAndQuantity.get(productId)).isEqualTo(10);

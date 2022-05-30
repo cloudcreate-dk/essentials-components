@@ -8,7 +8,7 @@ import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.i
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.persistence.AggregateTypeConfiguration;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.*;
 import dk.cloudcreate.essentials.reactive.LocalEventBus;
-import dk.cloudcreate.essentials.types.LongRange;
+import dk.cloudcreate.essentials.types.*;
 import reactor.core.publisher.Flux;
 
 import java.time.Duration;
@@ -107,7 +107,7 @@ public interface EventStore<CONFIG extends AggregateTypeConfiguration> {
      * @param aggregateType               the aggregate type that the underlying {@link AggregateEventStream} is associated with
      * @param aggregateId                 the identifier of the aggregate we want to persist events related to
      * @param appendEventsAfterEventOrder append the <code>events</code> after this event order, i.e. the first event in the <code>events</code> list
-     *                                    will receive {@link PersistedEvent#eventOrder()} which is <code>appendEventsAfterEventOrder +  1</code><br>
+     *                                    will receive an {@link PersistedEvent#eventOrder()} which is <code>appendEventsAfterEventOrder +  1</code><br>
      *                                    If it's the very first event to be appended, then you can provide {@link EventOrder#NO_EVENTS_PERSISTED}
      * @param events                      the events to persist
      * @param <ID>                        the id type for the aggregate
@@ -117,10 +117,9 @@ public interface EventStore<CONFIG extends AggregateTypeConfiguration> {
                                                          ID aggregateId,
                                                          EventOrder appendEventsAfterEventOrder,
                                                          List<?> events) {
-        requireNonNull(appendEventsAfterEventOrder, "No appendEventsAfterEventOrder provided");
         return appendToStream(aggregateType,
                               aggregateId,
-                              Optional.of(appendEventsAfterEventOrder.longValue()),
+                              Optional.ofNullable(appendEventsAfterEventOrder).map(NumberType::longValue),
                               events);
     }
 

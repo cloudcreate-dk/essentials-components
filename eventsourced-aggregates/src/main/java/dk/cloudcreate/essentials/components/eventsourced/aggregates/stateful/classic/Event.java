@@ -1,7 +1,8 @@
-package dk.cloudcreate.essentials.components.eventsourced.aggregates.classic;
+package dk.cloudcreate.essentials.components.eventsourced.aggregates.stateful.classic;
 
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.EventStore;
 import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.eventstream.AggregateType;
+import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.types.EventOrder;
 
 /**
  * Based Event type that's built to work in combination with {@link AggregateRoot}<br>
@@ -15,8 +16,8 @@ import dk.cloudcreate.essentials.components.eventsourced.eventstore.postgresql.e
  * @param <ID> the aggregate id type
  */
 public abstract class Event<ID> {
-    private ID   aggregateId;
-    private long eventOrder;
+    private ID         aggregateId;
+    private EventOrder eventOrder;
 
     /**
      * Get the id of the aggregate this event relates to. As a developer you only need to supply this value yourself for the very FIRST {@link Event} that is being applied<br>
@@ -45,7 +46,7 @@ public abstract class Event<ID> {
      * {@link #eventOrder()} is zero based, i.e. the first event has order value ZERO (0)<p>
      * The {@link AggregateRoot} automatically keeps track of the {@link Event#eventOrder()} value and will set it for you and ensure that it's growing consecutively
      */
-    public long eventOrder() {
+    public EventOrder eventOrder() {
         return eventOrder;
     }
 
@@ -54,7 +55,7 @@ public abstract class Event<ID> {
      *
      * @param eventOrder the order of the event for the aggregate instance the event relates to
      */
-    public void eventOrder(long eventOrder) {
+    public void eventOrder(EventOrder eventOrder) {
         this.eventOrder = eventOrder;
     }
 }
